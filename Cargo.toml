@@ -1,6 +1,6 @@
 [package]
 name = "centrality-explorer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A teaching aid to build intuition about centrality measures"
 license = "Apache-2.0 OR LGPL-2.1-or-later"
