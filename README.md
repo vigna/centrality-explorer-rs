@@ -57,8 +57,8 @@ not run on an older one.
 - The y-axis adapts to the largest score; View → Fixed y-axis [0, 1] keeps
   it at [0 . . 1].
 
-Hovering a node (or its curve) highlights the pair and shows the node's
-score.
+Hovering a node highlights it and its curve, and shows the node's score;
+hovering a curve highlights it and its node.
 
 ### PageRank and Katz's Index
 
@@ -197,14 +197,14 @@ node.
 
 ### Katz's Index
 
-Katz's index with parameter β counts the paths ending at each node,
-weighting a path of length *t* by βᵗ:
+Katz's index with parameter β counts the walks ending at each node (paths
+that may repeat nodes and arcs), weighting a walk of length *t* by βᵗ:
 
 *k*(β) = **1** Σ<sub>*t* ≥ 0</sub> βᵗ *A*ᵗ = **1** (*I* − β *A*)⁻¹, for
 0 ≤ β < 1/ρ.
 
 It is shown normalized, as κ(β) = *k*(β) / ‖*k*(β)‖₁. The term *t* = 0 (the
-path of length zero from each node to itself) is included, so κ(0) is
+walk of length zero from each node to itself) is included, so κ(0) is
 uniform, like PageRank at α = 0. The curves are computed exactly, by solving
 (*I* − β *A*ᵀ) *k*ᵀ = **1**ᵀ at each plotted β, except at the right end when
 ρ > 0 (see below).
@@ -218,7 +218,7 @@ and βρ = β.
 If ρ = 0, that is, if the graph has no cycles (self-loops included), *A* is
 nilpotent, the sum is finite, and every β is allowed. There is no natural
 range, so the x-axis is β ∈ [0 . . 1]. At β = 1, the score of a node is
-proportional to the number of paths ending at it, including the path of
+proportional to the number of walks ending at it, including the walk of
 length zero.
 
 If ρ > 0, the value at βρ = 1 is the exact limit of κ(β) as βρ → 1, not κ at
@@ -264,8 +264,8 @@ nonnegative nonzero solution of *x A* = ρ *x*. The plot shows the iterates *x*�
 
 *x*₀ = (1/*n*, …, 1/*n*), *x*ₖ₊₁ = *x*ₖ *A* / ‖*x*ₖ *A*‖₁.
 
-The iterate *x*ₖ is **1** *A*ᵏ normalized: the number of paths of length *k*
-ending at each node, as a fraction of all paths of length *k*. When the
+The iterate *x*ₖ is **1** *A*ᵏ normalized: the number of walks of length *k*
+ending at each node, as a fraction of all walks of length *k*. When the
 iterates converge, their limit is the limit of Katz's index at βρ = 1. But
 the iterates may also vanish, oscillate, or converge slowly:
 

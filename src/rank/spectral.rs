@@ -257,8 +257,8 @@ impl Spectrum {
     ///
     /// Write *s* = 1 − βρ, and let *h*(*C*) be the maximum number of basic
     /// classes on a path of the condensation ending in *C*. Then the
-    /// restriction *k*_C of *k* to a class *C* is *c*_C *s*^−*h*(*C*) +
-    /// *O*(*s*^1−*h*(*C*)), and the leading coefficients *c*_C can be
+    /// restriction *k*_C of *k* to a class *C* is *c*_C *s*^(−*h*(*C*)) +
+    /// *O*(*s*^(1−*h*(*C*))), and the leading coefficients *c*_C can be
     /// computed exactly class by class, in topological order, from *k*_C
     /// (*I* − β*A*_CC) = **1**_C + β Σ_{*D*→*C*} *k*_D *A*_DC.
     ///
