@@ -19,8 +19,9 @@ const PERRON_ITERATIONS: usize = 1_000_000;
 
 /// Returns Katz's index of a graph given by successor lists, normalized.
 ///
-/// This is κ(β) = *k*(β) / ‖*k*(β)‖₁, where *k*(β) = **1** Σ_{*t* ≥ 0}
-/// β^*t* *A*^*t* = **1** (*I* − β*A*)⁻¹. In particular, κ(0) is uniform.
+/// This is **κ**(β) = **k**(β) / ‖**k**(β)‖₁, where
+/// **k**(β) = **1** Σ_{*t* ≥ 0} β^*t* *A*^*t* = **1** (*I* − β*A*)⁻¹. In
+/// particular, **κ**(0) is uniform.
 ///
 /// The series converges, and the result is meaningful, only for 0 ≤ β <
 /// 1/ρ, where ρ is the [spectral radius](Spectrum::rho) of *A*; when ρ = 0,
@@ -28,8 +29,8 @@ const PERRON_ITERATIONS: usize = 1_000_000;
 ///
 /// # Implementation Notes
 ///
-/// The vector *k*(β) is the solution of the dense system (*I* − β*A*ᵀ)
-/// *k*ᵀ = **1**ᵀ.
+/// The vector **k**(β) is the solution of the dense system (*I* − β*A*ᵀ)
+/// **k**ᵀ = **1**ᵀ.
 pub fn katz(succ: &[Vec<usize>], beta: f64) -> Vec<f64> {
     let n = succ.len();
     let mut a = vec![0.0; n * n];
@@ -70,9 +71,10 @@ fn is_basic(radius: f64, rho: f64) -> bool {
 /// # Implementation Notes
 ///
 /// This is the power method on the primitive matrix *M* = *A* + *I*,
-/// starting from the uniform vector: *x* ← *xM* / ‖*xM*‖₁. Since *x* is
-/// positive, the Collatz–Wielandt bounds lo = minᵢ (*xM*)ᵢ / *x*ᵢ and hi =
-/// maxᵢ (*xM*)ᵢ / *x*ᵢ enclose the spectral radius of *M*, which is ρ + 1;
+/// starting from the uniform vector: **x** ← **x** *M* / ‖**x** *M*‖₁. Since
+/// **x** is positive, the Collatz–Wielandt bounds
+/// lo = minᵢ (**x** *M*)ᵢ / *x*ᵢ and hi = maxᵢ (**x** *M*)ᵢ / *x*ᵢ enclose
+/// the spectral radius of *M*, which is ρ + 1;
 /// the iteration stops when hi − lo ≤ [`PERRON_TOLERANCE`] · hi, or after
 /// [`PERRON_ITERATIONS`] steps, and returns (lo + hi) / 2 − 1.
 ///
@@ -242,12 +244,12 @@ impl Spectrum {
         dominant
     }
 
-    /// Returns the limit of [Katz's index](katz) κ(β) as β → 1/ρ.
+    /// Returns the limit of [Katz's index](katz) **κ**(β) as β → 1/ρ.
     ///
     /// Let ν, the index of ρ, be the maximum number of basic classes on a
-    /// path of the condensation. Then (1 − βρ)^ν *k*(β) tends to a nonzero
-    /// nonnegative vector, and κ(β) tends to its normalization. The limit is
-    /// supported on the basic classes that end a chain of ν basic classes,
+    /// path of the condensation. Then (1 − βρ)^ν **k**(β) tends to a nonzero
+    /// nonnegative vector, and **κ**(β) tends to its normalization. The limit
+    /// is supported on the basic classes that end a chain of ν basic classes,
     /// and on the nodes they reach; in particular, when ν > 1 a basic class
     /// upstream of another one has zero score.
     ///
@@ -257,23 +259,24 @@ impl Spectrum {
     ///
     /// Write *s* = 1 − βρ, and let *h*(*C*) be the maximum number of basic
     /// classes on a path of the condensation ending in *C*. Then the
-    /// restriction *k*_C of *k* to a class *C* is *c*_C *s*^(−*h*(*C*)) +
-    /// *O*(*s*^(1−*h*(*C*))), and the leading coefficients *c*_C can be
-    /// computed exactly class by class, in topological order, from *k*_C
-    /// (*I* − β*A*_CC) = **1**_C + β Σ_{*D*→*C*} *k*_D *A*_DC.
+    /// restriction **k**_C of **k** to a class *C* is **c**_C *s*^(−*h*(*C*)) +
+    /// *O*(*s*^(1−*h*(*C*))), and the leading coefficients **c**_C can be
+    /// computed exactly class by class, in topological order, from **k**_C
+    /// (*I* − β*A*_CC) = **1**_C + β Σ_{*D*→*C*} **k**_D *A*_DC.
     ///
-    /// Let *u*_H(*C*) = Σ_{*D*→*C*, *h*(*D*) = *H*} *c*_D *A*_DC / ρ, plus
+    /// Let **u**_H(*C*) = Σ_{*D*→*C*, *h*(*D*) = *H*} **c**_D *A*_DC / ρ, plus
     /// **1**_C when *H* = 0, and let *H* be the maximum *h*(*D*) over the
     /// classes *D* with an arc into *C* (0 if there are none). Then:
     ///
-    /// - if *C* is not basic, *h*(*C*) = *H* and *c*_C = *u*_H(*C*) (*I* −
+    /// - if *C* is not basic, *h*(*C*) = *H* and **c**_C = **u**_H(*C*) (*I* −
     ///   *A*_CC/ρ)⁻¹, which is computed by solving a dense system;
-    /// - if *C* is basic, *h*(*C*) = *H* + 1 and *c*_C = (*u*_H(*C*) *r*_C
-    ///   / (*l*_C *r*_C)) *l*_C, where *l*_C and *r*_C are the left and
-    ///   right Perron vectors of *A*_CC, as the pole of (*I* − β*A*_CC)⁻¹
-    ///   at β = 1/ρ is *r*_C *l*_C / (*s* *l*_C *r*_C).
+    /// - if *C* is basic, *h*(*C*) = *H* + 1 and
+    ///   **c**_C = (**u**_H(*C*) **r**_C / (**l**_C **r**_C)) **l**_C, where
+    ///   **l**_C and **r**_C are the left and right Perron vectors of *A*_CC,
+    ///   as the pole of (*I* − β*A*_CC)⁻¹ at β = 1/ρ is
+    ///   **r**_C **l**_C / (*s* **l**_C **r**_C).
     ///
-    /// The limit is the normalization of the vector that is *c*_C on the
+    /// The limit is the normalization of the vector that is **c**_C on the
     /// classes with *h*(*C*) = ν and zero elsewhere.
     pub fn katz_limit(&self) -> Vec<f64> {
         debug_assert!(self.rho > 0.0, "the Katz limit requires ρ > 0");

@@ -1,6 +1,6 @@
 //! Dense linear systems.
 
-/// Solves the linear system *A* *x* = *b* by Gaussian elimination with
+/// Solves the linear system *A* **x** = **b** by Gaussian elimination with
 /// partial pivoting, overwriting `b` with the solution.
 ///
 /// # Arguments

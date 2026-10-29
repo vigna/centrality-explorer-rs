@@ -13,9 +13,9 @@ use super::Chain;
 /// Returns the first `iterations` + 1 iterates of the power method on the
 /// transition matrix *P* of a chain.
 ///
-/// The first iterate is the uniform vector *x*₀, and *x*_{k+1} = *x*_k *P*.
-/// Every iterate sums to 1. When the chain has no nodes, the result is a
-/// single empty vector.
+/// The first iterate is the uniform vector **x**₀, and
+/// **x**_{k+1} = **x**_k *P*. Every iterate sums to 1. When the chain has no
+/// nodes, the result is a single empty vector.
 pub fn seeley_iterates(chain: &Chain, iterations: usize) -> Vec<Vec<f64>> {
     let n = chain.len();
     if n == 0 {
@@ -40,15 +40,15 @@ pub fn seeley_iterates(chain: &Chain, iterations: usize) -> Vec<Vec<f64>> {
 /// Returns the first iterates of the power method on the adjacency matrix *A*
 /// of a graph given by successor lists, at most `iterations` + 1.
 ///
-/// The first iterate is the uniform vector *x*₀, and *x*_{k+1} = *x*_k *A* /
-/// ‖*x*_k *A*‖₁. The iteration stops before the first *k* such that *x*_k
-/// *A* = 0, so a result with fewer than `iterations` + 1 vectors means that
-/// the iterates vanish at *k* equal to its length. When the graph has no
-/// nodes, the result is a single empty vector.
+/// The first iterate is the uniform vector **x**₀, and
+/// **x**_{k+1} = **x**_k *A* / ‖**x**_k *A*‖₁. The iteration stops before the
+/// first *k* such that **x**_k *A* = 0, so a result with fewer than
+/// `iterations` + 1 vectors means that the iterates vanish at *k* equal to its
+/// length. When the graph has no nodes, the result is a single empty vector.
 ///
 /// # Implementation Notes
 ///
-/// All entries are nonnegative, so there is no cancellation, and *x*_k *A* =
+/// All entries are nonnegative, so there is no cancellation, and **x**_k *A* =
 /// 0 is detected exactly by checking that the sum of its entries is 0.0. The
 /// products are sparse.
 pub fn eigenvector_iterates(succ: &[Vec<usize>], iterations: usize) -> Vec<Vec<f64>> {
