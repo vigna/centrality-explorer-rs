@@ -419,9 +419,12 @@ fn test_every_centrality_renders() {
     }
 }
 
+/// The directory of the screenshots in the README's Examples section.
+const SCREENSHOTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/screenshots");
+
 /// Renders the lecture example after the edit that closes {d, e} under each
-/// centrality offscreen to `target/screenshots/` for visual inspection. Run
-/// with `cargo test --test test_ui -- --ignored`.
+/// centrality offscreen to [`SCREENSHOTS`], regenerating the README's
+/// examples. Run with `cargo test --test test_ui -- --ignored`.
 #[test]
 #[ignore = "needs a GPU"]
 fn test_render_centralities() {
@@ -431,7 +434,7 @@ fn test_render_centralities() {
     h.state_mut().session_mut().commit(before);
     h.state_mut().session_mut().commit(after);
     h.run();
-    std::fs::create_dir_all("target/screenshots").unwrap();
+    std::fs::create_dir_all(SCREENSHOTS).unwrap();
     for c in Centrality::ALL {
         h.state_mut().session_mut().set_centrality(c);
         h.run();
@@ -439,15 +442,16 @@ fn test_render_centralities() {
         let name = format!("{c:?}").to_lowercase();
         h.render()
             .unwrap()
-            .save(format!("target/screenshots/{name}.png"))
+            .save(format!("{SCREENSHOTS}/{name}.png"))
             .unwrap();
     }
 }
 
 /// Renders eigenvector centrality on the 4-cycle a → b → c → d → a after
 /// deleting d → a, so that the iterates vanish at k = 4, offscreen to
-/// `target/screenshots/` for visual inspection: the end labels must sit at 0,
-/// next to the note. Run with `cargo test --test test_ui -- --ignored`.
+/// [`SCREENSHOTS`] (it is one of the README's examples): the end labels must
+/// sit at 0, next to the note. Run with `cargo test --test test_ui --
+/// --ignored`.
 #[test]
 #[ignore = "needs a GPU"]
 fn test_render_eigenvector_vanishing() {
@@ -472,9 +476,9 @@ fn test_render_eigenvector_vanishing() {
     h.state_mut().session_mut().commit(g);
     h.run();
     assert_eq!(h.state().session().ranking().vanished, Some(4));
-    std::fs::create_dir_all("target/screenshots").unwrap();
+    std::fs::create_dir_all(SCREENSHOTS).unwrap();
     h.render()
         .unwrap()
-        .save("target/screenshots/eigenvector_vanishing.png")
+        .save(format!("{SCREENSHOTS}/eigenvector_vanishing.png"))
         .unwrap();
 }

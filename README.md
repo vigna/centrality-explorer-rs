@@ -45,6 +45,11 @@ not run on an older one.
   its area is proportional to the score, within a minimum and a maximum
   size, and a node with score 1/*n*, where *n* is the number of nodes, has
   the standard size.
+- A node whose score is exactly zero has a thicker gray outline: for
+  example, the nodes outside the sinks in the limit of PageRank at α = 1, or
+  every node once the iterates of eigenvector centrality vanish. A score
+  that is merely small, such as that of the same nodes at α = 0.99, is not
+  zero, and keeps the dark outline.
 - The vertical line in the plot marks the current value of the parameter,
   with a dot on each curve; clicking or dragging in the plot moves it. Node
   labels at the right end of the plot name the curves.
@@ -104,6 +109,110 @@ hovering a curve highlights it and its node.
   on the x-axis. End labels, hovering, and the curves from before the last
   edit work as for the other centralities.
 - There are no hulls and no dashed outlines.
+
+## Examples
+
+The screenshots below show the same graph under each centrality, in the
+order of the Centrality menu: a triangle a → b → c → a, with arcs c → d and
+d → e, right after the edit that adds e → d and closes d and e into a
+2-cycle. The faded dashed curves show the graph before that edit, when e was
+dangling. The parameters are at their defaults: α = βρ = 0.85, and *k* = 50.
+
+### PageRank
+
+![PageRank](screenshots/pagerank.png)
+
+After the edit, d and e form a sink, shaded in the graph. As α → 1, their
+PageRank rises to ½ each, and that of a, b, and c falls to zero, all of a
+sudden near α = 1: drag the slider to α = 1, and a, b, and c get a gray
+outline. Before the edit, the walk restarted from the dangling node e, there
+was no sink, and the limit at α = 1 (the right end of the dashed curves) is
+positive on every node.
+
+### Katz's Index
+
+![Katz's index](screenshots/katz.png)
+
+The triangle and the 2-cycle both have spectral radius 1 = ρ, so both are
+dominant (two hulls), and the first leads to the second (ν = 2): as βρ → 1,
+the limit is ½ on d and e, and zero on the upstream triangle, although the
+triangle is dominant, too. The curves of a, b, and c coincide, since each of
+them is reached only from the previous node of the triangle. Before the
+edit, every node had exactly one incoming arc, so **1** *A* = **1**, and
+Katz's index is uniform for every β: the dashed curves coincide at 0.2.
+
+### Seeley's Index
+
+![Seeley's index](screenshots/seeley.png)
+
+The walk starts from the uniform distribution. The probability leaving the
+triangle through c → d never comes back, so the iterates of a, b, and c
+decay, in steps, as the probability goes around the triangle; at *k* = 50
+they are tiny, but not zero, and the outlines stay dark. The 2-cycle is
+periodic, and d and e alternate forever, with constant amplitude: PageRank
+at α = 1 gives ½ to both, the long-run average, and hides the oscillation.
+Before the edit, the jump from the dangling node e broke the periodicity,
+and the dashed iterates converge, to the limit of PageRank at α = 1 of that
+graph.
+
+### Eigenvector Centrality
+
+![Eigenvector centrality](screenshots/eigenvector.png)
+
+The iterate **1** *A*ᵏ counts the walks of length *k* ending at each node.
+Each node of the triangle is reached by exactly one such walk, whereas the
+walks reaching d and e grow linearly with *k*, d being fed by both c and e.
+The iterates converge to the limit of Katz's index, ½ on d and e and zero on
+the triangle, but slowly, like 1/*k*, because ν = 2: at *k* = 50, the
+triangle still has 1/55 each, and the zigzag of d and e fades like
+1/*k*, too. Before the edit, **1** *A*ᵏ = **1** for every *k*, so the
+dashed iterates are uniform.
+
+![Eigenvector centrality, vanishing](screenshots/eigenvector_vanishing.png)
+
+Here the iterates vanish. The 4-cycle a → b → c → d → a (dashed: on a
+cycle, **1** *A*ᵏ = **1**) loses the arc d → a, leaving the path
+a → b → c → d. Now **1** *A* = (0, 1, 1, 1), since no walk of length 1 ends
+at a; then **1** *A*² = (0, 0, 1, 1), **1** *A*³ = (0, 0, 0, 1), and
+**1** *A*⁴ = 0. The curves stop at *k* = 3, the note says that the iterates
+vanish from *k* = 4 on, and at *k* = 50 every node has score zero: all
+outlines are gray, and all labels sit at 0.
+
+### Closeness
+
+![Closeness](screenshots/closeness.png)
+
+The nodes of the triangle have the largest closeness, and the edit lowers
+the closeness of d: once e reaches d, the distance *d*(e, d) = 1 joins the
+sum of the distances to d, which goes from 6 to 7. Closeness takes into
+account only the nodes that reach a node, so being reached by more nodes
+can lower it.
+
+### Harmonic Centrality
+
+![Harmonic centrality](screenshots/harmonic.png)
+
+The same edit raises the harmonic centrality of d, from
+1/3 + 1/2 + 1 = 11/6 to 11/6 + 1 = 17/6, which now ranks d above e; a, b,
+and c, which are reached only from the triangle, come last. The harmonic
+centrality of e does not change (25/12), but its share does: normalization
+spreads the gain of d over all nodes.
+
+### Betweenness
+
+![Betweenness](screenshots/betweenness.png)
+
+Node c is on the shortest paths from a and b to d and e, and from b to a,
+so it has the largest betweenness. Node e is on no shortest path between two
+other nodes, so its betweenness is zero, and its outline is gray. The edit
+adds no shortest path through any node, so the dashed curves coincide with
+the current ones.
+
+The screenshots are regenerated, on a machine with a GPU, by
+
+```sh
+cargo test --release --test test_ui -- --ignored test_render_centralities test_render_eigenvector_vanishing
+```
 
 ## Editing
 

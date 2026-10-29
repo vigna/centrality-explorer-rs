@@ -15,6 +15,10 @@ pub(crate) const DURATION: f64 = 1.0;
 
 const ARC_COLOR: Color32 = Color32::from_gray(70);
 const OUTLINE_COLOR: Color32 = Color32::from_gray(30);
+/// The outline color of a node whose score is exactly zero.
+const ZERO_OUTLINE_COLOR: Color32 = Color32::from_gray(160);
+/// The extra outline width of a node whose score is exactly zero.
+const ZERO_OUTLINE_EXTRA: f32 = 1.0;
 const ACCENT: Color32 = Color32::from_rgb(0x00, 0x71, 0xe3);
 const ARC_WIDTH: f32 = 2.5;
 const ARROW_LENGTH: f32 = 14.0;
@@ -336,24 +340,18 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         let fill = palette::color(node.color);
         painter.circle_filled(p, r, fill);
         // The node may be hovered on the canvas or through its curve.
-        let outline = if app.hovered == Some(node.id) {
-            3.5
-        } else {
-            2.0
-        };
+        let outline = outline(
+            scores.get(&node.id).copied().unwrap_or(0.0),
+            app.hovered == Some(node.id),
+        );
         if app.session.ranking().dangling.contains(&node.id) {
             let mut circle: Vec<Pos2> = (0..=40)
                 .map(|k| p + Vec2::angled(std::f32::consts::TAU * k as f32 / 40.0) * r)
                 .collect();
             circle.push(circle[0]);
-            painter.extend(Shape::dashed_line(
-                &circle,
-                Stroke::new(outline, OUTLINE_COLOR),
-                5.0,
-                4.0,
-            ));
+            painter.extend(Shape::dashed_line(&circle, outline, 5.0, 4.0));
         } else {
-            painter.circle_stroke(p, r, Stroke::new(outline, OUTLINE_COLOR));
+            painter.circle_stroke(p, r, outline);
         }
         if pending == Some(node.id) {
             painter.circle_stroke(p, r + 5.0, Stroke::new(3.0, ACCENT));
@@ -494,6 +492,22 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
     }
 }
 
+/// Returns the outline of a node with the given score: a thicker gray circle
+/// if the score is exactly zero, a dark one otherwise, thicker still if the
+/// node is hovered.
+///
+/// Zeros are structural (transient nodes in the PageRank limit, vanished
+/// iterates, unreached nodes) and computed exactly, whereas a tiny positive
+/// score, such as that of a transient node near α = 1, is not zero.
+fn outline(score: f64, hovered: bool) -> Stroke {
+    let width = if hovered { 3.5 } else { 2.0 };
+    if score == 0.0 {
+        Stroke::new(width + ZERO_OUTLINE_EXTRA, ZERO_OUTLINE_COLOR)
+    } else {
+        Stroke::new(width, OUTLINE_COLOR)
+    }
+}
+
 /// Returns the index of the arc nearest to a point, if within the
 /// tolerance.
 fn nearest_arc(arcs: &[DrawnArc], p: Pos2) -> Option<usize> {
@@ -613,6 +627,16 @@ fn edit_keys(ui: &egui::Ui) -> Vec<EditKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_outline() {
+        assert_eq!(outline(0.0, false).color, ZERO_OUTLINE_COLOR);
+        assert!(outline(0.0, false).width > outline(0.2, false).width);
+        assert!(outline(0.0, true).width > outline(0.0, false).width);
+        // Small is not zero: near α = 1 transient nodes are tiny, not dead.
+        assert_eq!(outline(1e-300, false), outline(0.2, false));
+        assert_eq!(outline(0.2, false).color, OUTLINE_COLOR);
+    }
 
     #[test]
     fn test_view_identity_when_visible() {

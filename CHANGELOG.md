@@ -24,6 +24,11 @@
 - Saved graphs record the current centrality and the parameter of Katz's
   index; files saved by 0.1.0 open with PageRank.
 
+- Nodes whose score is exactly zero have a thicker gray outline.
+
+- An Examples section in the README, with a commented screenshot of each
+  centrality.
+
 ### Changed
 
 - PageRank Explorer is now Centrality Explorer (crate and binary
