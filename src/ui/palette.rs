@@ -1,8 +1,5 @@
 //! Node colors.
 
-// Used by the canvas and the plot, which remove this attribute.
-#![allow(dead_code)]
-
 use egui::Color32;
 
 use crate::graph::PALETTE_SIZE;

@@ -4,12 +4,18 @@
 //! graph snapshots; it keeps only presentation state (gesture in progress,
 //! hovered node, animations, dialogs).
 
+mod canvas;
+mod geometry;
 mod palette;
+
+use std::collections::HashMap;
 
 use egui::{FontId, Key, KeyboardShortcut, Modifiers, TextStyle};
 
+use canvas::Animation;
+
 use crate::Session;
-use crate::edit::{Editor, Gesture};
+use crate::edit::{Editor, Gesture, Target};
 use crate::graph::{Graph, NodeId};
 use crate::layouts;
 
@@ -82,9 +88,21 @@ pub fn run() -> eframe::Result {
 pub struct App {
     session: Session,
     editor: Editor,
+    /// The node under the pointer, on the canvas or (via its curve) on the
+    /// plot.
     hovered: Option<NodeId>,
+    /// Whether the canvas or the plot handled the pointer this frame.
+    hover_seen: bool,
+    /// The node being dragged, with the offset of the pointer from its
+    /// center.
+    dragging: Option<(NodeId, egui::Vec2)>,
+    /// The target and canvas-local position of the last right click.
+    context: Option<(Target, [f32; 2])>,
+    animation: Option<Animation>,
     fixed_y: bool,
     canvas_rect: egui::Rect,
+    /// The time of the current frame, in seconds.
+    now: f64,
 }
 
 impl App {
@@ -106,8 +124,13 @@ impl App {
             session: Session::new(true),
             editor: Editor::default(),
             hovered: None,
+            hover_seen: false,
+            dragging: None,
+            context: None,
+            animation: None,
             fixed_y: false,
             canvas_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, DEFAULT_CANVAS.into()),
+            now: 0.0,
         }
     }
 
@@ -126,14 +149,27 @@ impl App {
         self.canvas_rect
     }
 
-    /// Lays out the graph for the current canvas size and commits the new
-    /// positions.
+    /// Lays out the graph for the current canvas size, commits the new
+    /// positions, and animates the nodes to them.
     pub fn apply_layout(&mut self, layout: Layout) {
         let size = self.canvas_rect.size();
         let pos = layout(self.session.graph(), [size.x, size.y]);
         let mut graph = self.session.graph().clone();
         graph.set_positions(&pos);
+        self.animate_from_current();
         self.session.commit(graph);
+    }
+
+    /// Starts an animation from the current node positions.
+    fn animate_from_current(&mut self) {
+        let from: HashMap<NodeId, [f32; 2]> = self
+            .session
+            .graph()
+            .nodes()
+            .iter()
+            .map(|node| (node.id, node.pos))
+            .collect();
+        self.animation = Some(Animation::new(from, self.now));
     }
 
     /// Drops references to nodes that no longer exist.
@@ -270,6 +306,8 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.now = ctx.input(|i| i.time);
+        self.hover_seen = false;
         self.handle_keys(&ctx);
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         let half = ui.available_width() / 2.0;
@@ -280,8 +318,9 @@ impl eframe::App for App {
                 egui::Panel::bottom("alpha").show(ui, |ui| self.alpha_slider(ui));
                 egui::CentralPanel::default().show(ui, |_ui| {});
             });
-        egui::CentralPanel::default().show(ui, |ui| {
-            self.canvas_rect = ui.max_rect();
-        });
+        egui::CentralPanel::default().show(ui, |ui| canvas::canvas(self, ui));
+        if !self.hover_seen {
+            self.hovered = None;
+        }
     }
 }

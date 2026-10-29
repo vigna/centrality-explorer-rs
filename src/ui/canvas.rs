@@ -1,0 +1,520 @@
+//! The graph canvas: drawing and editing.
+
+use std::collections::HashMap;
+
+use egui::{Align2, Color32, FontId, Pos2, Shape, Stroke, Vec2, pos2, vec2};
+
+use super::geometry::{dist_to_segment, ease, hull, node_radius};
+use super::{App, Command, palette};
+use crate::edit::{self, EditKey, Gesture, Target};
+use crate::graph::NodeId;
+use crate::layouts;
+
+/// The duration of layout animations, in seconds.
+pub(crate) const DURATION: f64 = 1.0;
+
+const ARC_COLOR: Color32 = Color32::from_gray(70);
+const OUTLINE_COLOR: Color32 = Color32::from_gray(30);
+const ACCENT: Color32 = Color32::from_rgb(0x00, 0x71, 0xe3);
+const ARC_WIDTH: f32 = 2.5;
+const ARROW_LENGTH: f32 = 14.0;
+const ARROW_HALF_WIDTH: f32 = 7.0;
+/// The perpendicular offset of each arc of a pair of opposite arcs.
+const PAIR_OFFSET: f32 = 6.0;
+const LOOP_RADIUS: f32 = 14.0;
+const LABEL_SIZE: f32 = 20.0;
+const NODE_SLACK: f32 = 4.0;
+const ARC_SLACK: f32 = 8.0;
+const HULL_PAD: f32 = 14.0;
+
+/// A layout transition: nodes move from their old positions (or from the
+/// canvas center, for nodes that had none) to their current ones.
+pub(crate) struct Animation {
+    from: HashMap<NodeId, [f32; 2]>,
+    start: f64,
+}
+
+impl Animation {
+    /// Creates an animation from the given positions, starting at the given
+    /// time.
+    pub(crate) fn new(from: HashMap<NodeId, [f32; 2]>, start: f64) -> Self {
+        Self { from, start }
+    }
+}
+
+/// An arc as drawn.
+struct DrawnArc {
+    from: NodeId,
+    to: NodeId,
+    shape: ArcShape,
+}
+
+enum ArcShape {
+    /// A straight segment, possibly with an arrowhead at the end.
+    Segment { start: Pos2, end: Pos2, arrow: bool },
+    /// A self-loop: a circle above the node, whose lower part is hidden by
+    /// the node.
+    Loop { center: Pos2, tip: Pos2 },
+}
+
+impl DrawnArc {
+    fn distance(&self, p: Pos2) -> f32 {
+        match self.shape {
+            ArcShape::Segment { start, end, .. } => {
+                dist_to_segment([p.x, p.y], [start.x, start.y], [end.x, end.y])
+            }
+            ArcShape::Loop { center, .. } => (p.distance(center) - LOOP_RADIUS).abs(),
+        }
+    }
+}
+
+/// Shows the canvas, handling editing gestures.
+pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
+    let (response, painter) =
+        ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
+    let rect = response.rect;
+    app.canvas_rect = rect;
+    let origin = rect.min.to_vec2();
+    if response.is_pointer_button_down_on() {
+        app.animation = None;
+    }
+
+    // Positions as displayed, possibly mid-animation.
+    let graph = app.session.graph();
+    let t = app
+        .animation
+        .as_ref()
+        .map(|animation| ease(((app.now - animation.start) / DURATION) as f32));
+    let center = rect.center();
+    let positions: Vec<Pos2> = graph
+        .nodes()
+        .iter()
+        .map(|node| {
+            let target = pos2(node.pos[0], node.pos[1]) + origin;
+            match (t, &app.animation) {
+                (Some(t), Some(animation)) => {
+                    let from = animation
+                        .from
+                        .get(&node.id)
+                        .map_or(center, |p| pos2(p[0], p[1]) + origin);
+                    from.lerp(target, t)
+                }
+                _ => target,
+            }
+        })
+        .collect();
+    match t {
+        Some(t) if t >= 1.0 => app.animation = None,
+        Some(_) => ui.ctx().request_repaint(),
+        None => {}
+    }
+
+    let n = graph.len();
+    let scores: HashMap<NodeId, f64> = app
+        .session
+        .ranking()
+        .ids
+        .iter()
+        .copied()
+        .zip(app.session.scores().iter().copied())
+        .collect();
+    let radii: Vec<f32> = graph
+        .nodes()
+        .iter()
+        .map(|node| node_radius(scores.get(&node.id).copied().unwrap_or(0.0), n))
+        .collect();
+    let arcs = drawn_arcs(app, &positions, &radii);
+    let ids: Vec<NodeId> = graph.nodes().iter().map(|node| node.id).collect();
+
+    // Hit testing.
+    let hit_node = |p: Pos2| {
+        (0..n)
+            .rev()
+            .find(|&i| p.distance(positions[i]) <= radii[i] + NODE_SLACK)
+    };
+    let hit_arc = |p: Pos2| arcs.iter().position(|arc| arc.distance(p) <= ARC_SLACK);
+    let target_at = |p: Pos2| match hit_node(p) {
+        Some(i) => Target::Node(ids[i]),
+        None => match hit_arc(p) {
+            Some(a) => Target::Arc(arcs[a].from, arcs[a].to),
+            None => Target::Empty,
+        },
+    };
+    let pointer = response.hover_pos();
+    let hovered_node = pointer.and_then(hit_node);
+    let hovered_arc = match hovered_node {
+        None => pointer.and_then(hit_arc),
+        Some(_) => None,
+    };
+    if response.hovered() {
+        app.hovered = hovered_node.map(|i| ids[i]);
+        app.hover_seen = true;
+    }
+    let hovered_id = hovered_node.map(|i| ids[i]);
+
+    // Interaction.
+    let mut new_graph = None;
+    let mut command = None;
+    let local = |p: Pos2| [p.x - origin.x, p.y - origin.y];
+    if response.drag_started_by(egui::PointerButton::Primary)
+        && let Some(press) = ui.input(|i| i.pointer.press_origin())
+        && let Some(i) = hit_node(press)
+    {
+        app.dragging = Some((ids[i], press - positions[i]));
+        app.session.begin_drag();
+    }
+    if let Some((id, offset)) = app.dragging {
+        if response.dragged()
+            && let Some(p) = response.interact_pointer_pos()
+        {
+            let p = (p - offset).clamp(rect.min, rect.max);
+            app.session.drag_to(id, local(p));
+        }
+        if response.drag_stopped() {
+            app.session.end_drag();
+            app.dragging = None;
+        }
+    }
+    let graph = app.session.graph();
+    if response.clicked()
+        && let Some(p) = response.interact_pointer_pos()
+    {
+        new_graph = app.editor.click(graph, target_at(p));
+    }
+    if response.double_clicked()
+        && let Some(p) = response.interact_pointer_pos()
+        && target_at(p) == Target::Empty
+    {
+        new_graph = Some(app.editor.double_click_empty(graph, local(p)));
+    }
+    if response.secondary_clicked()
+        && let Some(p) = response.interact_pointer_pos()
+    {
+        app.context = Some((target_at(p), local(p)));
+    }
+    if !ui.ctx().egui_wants_keyboard_input() {
+        for key in edit_keys(ui) {
+            if let Some(g) = app.editor.key(app.session.graph(), hovered_id, key) {
+                new_graph = Some(g);
+            }
+        }
+    }
+
+    // Drawing, back to front.
+    let graph = app.session.graph();
+    let index: HashMap<NodeId, usize> = graph
+        .nodes()
+        .iter()
+        .enumerate()
+        .map(|(i, node)| (node.id, i))
+        .collect();
+    for component in &app.session.ranking().terminal {
+        let members: Vec<usize> = component
+            .iter()
+            .filter_map(|id| index.get(id).copied())
+            .collect();
+        let Some(&first) = members.first() else {
+            continue;
+        };
+        let circles: Vec<([f32; 2], f32)> = members
+            .iter()
+            .map(|&i| ([positions[i].x, positions[i].y], radii[i]))
+            .collect();
+        let points: Vec<Pos2> = hull(&circles, HULL_PAD)
+            .into_iter()
+            .map(|p| pos2(p[0], p[1]))
+            .collect();
+        let tint = palette::color(graph.nodes()[first].color);
+        painter.add(Shape::convex_polygon(
+            points.clone(),
+            tint.gamma_multiply(0.15),
+            Stroke::NONE,
+        ));
+        let mut closed = points.clone();
+        closed.push(points[0]);
+        painter.extend(Shape::dashed_line(
+            &closed,
+            Stroke::new(2.0, tint.gamma_multiply(0.8)),
+            8.0,
+            6.0,
+        ));
+        let bottom = points.iter().map(|p| p.y).fold(f32::MIN, f32::max);
+        let mid = points.iter().map(|p| p.x).sum::<f32>() / points.len() as f32;
+        painter.text(
+            pos2(mid, bottom + 4.0),
+            Align2::CENTER_TOP,
+            "terminal",
+            FontId::proportional(15.0),
+            tint,
+        );
+    }
+
+    for (a, arc) in arcs.iter().enumerate() {
+        let (width, color) = if hovered_arc == Some(a) {
+            (ARC_WIDTH + 2.0, ACCENT)
+        } else {
+            (ARC_WIDTH, ARC_COLOR)
+        };
+        draw_arc(&painter, arc, Stroke::new(width, color));
+    }
+
+    let pending = match app.editor.gesture() {
+        Gesture::PendingEdge { from } => Some(*from),
+        _ => None,
+    };
+    for (i, node) in graph.nodes().iter().enumerate() {
+        let (p, r) = (positions[i], radii[i]);
+        let fill = palette::color(node.color);
+        painter.circle_filled(p, r, fill);
+        let outline = if hovered_node == Some(i) { 3.5 } else { 2.0 };
+        if app.session.ranking().dangling.contains(&node.id) {
+            let mut circle: Vec<Pos2> = (0..=40)
+                .map(|k| p + Vec2::angled(std::f32::consts::TAU * k as f32 / 40.0) * r)
+                .collect();
+            circle.push(circle[0]);
+            painter.extend(Shape::dashed_line(
+                &circle,
+                Stroke::new(outline, OUTLINE_COLOR),
+                5.0,
+                4.0,
+            ));
+        } else {
+            painter.circle_stroke(p, r, Stroke::new(outline, OUTLINE_COLOR));
+        }
+        if pending == Some(node.id) {
+            painter.circle_stroke(p, r + 5.0, Stroke::new(3.0, ACCENT));
+        }
+        painter.text(
+            p,
+            Align2::CENTER_CENTER,
+            &node.label,
+            FontId::proportional(LABEL_SIZE),
+            palette::label_color(node.color),
+        );
+    }
+
+    if let (Some(from), Some(pointer)) = (pending, pointer)
+        && let Some(&i) = index.get(&from)
+    {
+        let dir = (pointer - positions[i]).normalized();
+        if dir.is_finite() && pointer.distance(positions[i]) > radii[i] {
+            let start = positions[i] + dir * radii[i];
+            draw_segment(
+                &painter,
+                start,
+                pointer,
+                true,
+                Stroke::new(ARC_WIDTH, ACCENT),
+            );
+        }
+    }
+
+    if let Gesture::Renaming { node, text } = app.editor.gesture()
+        && let Some(&i) = index.get(node)
+    {
+        let galley = painter.layout_no_wrap(
+            format!("{text}|"),
+            FontId::proportional(LABEL_SIZE),
+            Color32::BLACK,
+        );
+        let size = vec2(galley.size().x.max(40.0) + 16.0, galley.size().y + 8.0);
+        let frame = egui::Rect::from_center_size(positions[i], size);
+        painter.rect_filled(frame, 6.0, Color32::WHITE);
+        painter.rect_stroke(
+            frame,
+            6.0,
+            Stroke::new(2.0, ACCENT),
+            egui::StrokeKind::Outside,
+        );
+        painter.galley(frame.center() - galley.size() / 2.0, galley, Color32::BLACK);
+    }
+
+    // Context menu.
+    let context = app.context;
+    response.context_menu(|ui| {
+        let Some((target, pos)) = context else {
+            return;
+        };
+        let graph = app.session.graph();
+        match target {
+            Target::Node(id) => {
+                if ui.button("Toggle Self-Loop").clicked() {
+                    new_graph = Some(edit::toggle_self_loop(graph, id));
+                    ui.close();
+                }
+                if ui.button("Rename").clicked() {
+                    app.editor.start_rename(graph, id);
+                    ui.close();
+                }
+                if ui.button("Delete Node").clicked() {
+                    new_graph = Some(edit::delete_node(graph, id));
+                    ui.close();
+                }
+            }
+            Target::Arc(from, to) => {
+                if ui.button("Delete Edge").clicked() {
+                    new_graph = Some(edit::delete_arc(graph, from, to));
+                    ui.close();
+                }
+            }
+            Target::Empty => {
+                if ui.button("Add Node Here").clicked() {
+                    new_graph = Some(app.editor.double_click_empty(graph, pos));
+                    ui.close();
+                }
+                if ui.button("Random Graph…").clicked() {
+                    command = Some(Command::Random);
+                    ui.close();
+                }
+                ui.menu_button("Layout", |ui| {
+                    for (name, layout) in [
+                        ("Force-Directed", layouts::force as super::Layout),
+                        ("Circle", layouts::circle),
+                        ("Components", layouts::components),
+                    ] {
+                        if ui.button(name).clicked() {
+                            command = Some(Command::Layout(layout));
+                            ui.close();
+                        }
+                    }
+                });
+                ui.separator();
+                if ui.button("Undo").clicked() {
+                    command = Some(Command::Undo);
+                    ui.close();
+                }
+                if ui.button("Redo").clicked() {
+                    command = Some(Command::Redo);
+                    ui.close();
+                }
+            }
+        }
+    });
+
+    if let Some(g) = new_graph {
+        app.session.commit(g);
+        app.prune();
+    }
+    if let Some(command) = command {
+        app.execute(ui.ctx(), command);
+    }
+
+    if let Some(id) = hovered_id
+        && app.dragging.is_none()
+        && let Some(node) = app.session.graph().node(id)
+    {
+        let score = app
+            .session
+            .ranking()
+            .ids
+            .iter()
+            .position(|&x| x == id)
+            .map_or(0.0, |i| app.session.scores()[i]);
+        response.on_hover_text_at_pointer(format!("{}: {score:.4}", node.label));
+    }
+}
+
+/// Returns the arcs as drawn: opposite arcs side by side, self-loops above
+/// their node, and one undirected edge per pair of opposite arcs.
+fn drawn_arcs(app: &App, positions: &[Pos2], radii: &[f32]) -> Vec<DrawnArc> {
+    let graph = app.session.graph();
+    let directed = graph.is_directed();
+    let mut arcs = Vec::new();
+    for (from, to) in graph.arcs() {
+        let (Some(f), Some(t)) = (graph.index_of(from), graph.index_of(to)) else {
+            continue;
+        };
+        if f == t {
+            let center = positions[f] - vec2(0.0, radii[f] + LOOP_RADIUS * 0.6);
+            let tip = positions[f] + Vec2::angled(-1.15) * radii[f];
+            arcs.push(DrawnArc {
+                from,
+                to,
+                shape: ArcShape::Loop { center, tip },
+            });
+            continue;
+        }
+        if !directed && from > to {
+            continue;
+        }
+        let dir = (positions[t] - positions[f]).normalized();
+        if !dir.is_finite() {
+            continue;
+        }
+        let offset = if directed && graph.has_arc(to, from) {
+            dir.rot90() * PAIR_OFFSET
+        } else {
+            Vec2::ZERO
+        };
+        let start = positions[f] + dir * radii[f] + offset;
+        let end = positions[t] - dir * (radii[t] + 2.0) + offset;
+        arcs.push(DrawnArc {
+            from,
+            to,
+            shape: ArcShape::Segment {
+                start,
+                end,
+                arrow: directed,
+            },
+        });
+    }
+    arcs
+}
+
+fn draw_arc(painter: &egui::Painter, arc: &DrawnArc, stroke: Stroke) {
+    match arc.shape {
+        ArcShape::Segment { start, end, arrow } => draw_segment(painter, start, end, arrow, stroke),
+        ArcShape::Loop { center, tip } => {
+            painter.circle_stroke(center, LOOP_RADIUS, stroke);
+            let dir = Vec2::angled(1.9);
+            arrowhead(painter, tip, dir, stroke.color);
+        }
+    }
+}
+
+fn draw_segment(painter: &egui::Painter, start: Pos2, end: Pos2, arrow: bool, stroke: Stroke) {
+    let dir = (end - start).normalized();
+    if arrow && dir.is_finite() && start.distance(end) > ARROW_LENGTH {
+        painter.line_segment([start, end - dir * ARROW_LENGTH], stroke);
+        arrowhead(painter, end, dir, stroke.color);
+    } else {
+        painter.line_segment([start, end], stroke);
+    }
+}
+
+/// Draws an arrowhead with the given tip, pointing in the given direction.
+fn arrowhead(painter: &egui::Painter, tip: Pos2, dir: Vec2, color: Color32) {
+    let base = tip - dir * ARROW_LENGTH;
+    let side = dir.rot90() * ARROW_HALF_WIDTH;
+    painter.add(Shape::convex_polygon(
+        vec![tip, base + side, base - side],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// Returns the editing keys pressed this frame.
+fn edit_keys(ui: &egui::Ui) -> Vec<EditKey> {
+    ui.input(|i| {
+        let mut keys = Vec::new();
+        for event in &i.events {
+            match event {
+                egui::Event::Text(text) => keys.extend(text.chars().map(EditKey::Char)),
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } if !modifiers.command => match key {
+                    egui::Key::Backspace => keys.push(EditKey::Backspace),
+                    egui::Key::Delete => keys.push(EditKey::Delete),
+                    egui::Key::Enter => keys.push(EditKey::Enter),
+                    egui::Key::Escape => keys.push(EditKey::Escape),
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        keys
+    })
+}
