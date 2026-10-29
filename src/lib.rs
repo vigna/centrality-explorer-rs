@@ -7,5 +7,6 @@ pub mod layouts;
 pub mod random;
 pub mod rank;
 mod session;
+pub mod ui;
 
 pub use session::Session;
