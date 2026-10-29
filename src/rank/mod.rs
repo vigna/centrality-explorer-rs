@@ -5,8 +5,15 @@
 //! vector is uniform.
 
 mod lu;
+mod scc;
 
-use crate::graph::Graph;
+pub use scc::sccs;
+
+use crate::graph::{Graph, NodeId};
+
+/// The number of α values sampled in [0, 1) by [`Ranking`], which adds
+/// α = 1.
+pub const SAMPLES: usize = 256;
 
 /// The transition structure of a graph.
 ///
@@ -73,10 +80,14 @@ impl Chain {
 /// Returns the PageRank vector of a chain with damping factor `alpha` and
 /// uniform preference vector.
 ///
-/// The result solves (*I* − α *P*ᵀ) *x* = (1 − α) *v*, where *v* is the
-/// uniform distribution, and sums to one.
+/// For α < 1 the result solves (*I* − α *P*ᵀ) *x* = (1 − α) *v*, where *v*
+/// is the uniform distribution; for α = 1 it is the limit computed by
+/// [`limit`]. It always sums to one.
 pub fn pagerank(chain: &Chain, alpha: f64) -> Vec<f64> {
-    debug_assert!((0.0..1.0).contains(&alpha), "alpha must be in [0, 1)");
+    debug_assert!((0.0..=1.0).contains(&alpha), "alpha must be in [0, 1]");
+    if alpha >= 1.0 {
+        return limit(chain);
+    }
     let n = chain.len();
     let p = chain.transition();
     let mut a = vec![0.0; n * n];
@@ -89,6 +100,173 @@ pub fn pagerank(chain: &Chain, alpha: f64) -> Vec<f64> {
     let mut x = vec![(1.0 - alpha) / n as f64; n];
     lu::solve(&mut a, &mut x);
     x
+}
+
+/// Returns the terminal strongly connected components of the chain actually
+/// walked, in which dangling nodes link to every node.
+///
+/// Each component is sorted, and components are sorted by their smallest
+/// node. A lone dangling node is never terminal.
+pub fn terminal_components(chain: &Chain) -> Vec<Vec<usize>> {
+    let n = chain.len();
+    let patched: Vec<Vec<usize>> = (0..n)
+        .map(|i| {
+            if chain.is_dangling(i) {
+                (0..n).collect()
+            } else {
+                chain.succ[i].clone()
+            }
+        })
+        .collect();
+    let components = sccs(&patched);
+    let mut component_of = vec![0; n];
+    for (c, component) in components.iter().enumerate() {
+        for &v in component {
+            component_of[v] = c;
+        }
+    }
+    let mut terminal: Vec<Vec<usize>> = components
+        .iter()
+        .enumerate()
+        .filter(|&(c, component)| {
+            component
+                .iter()
+                .all(|&v| patched[v].iter().all(|&w| component_of[w] == c))
+        })
+        .map(|(_, component)| component.clone())
+        .collect();
+    terminal.sort_unstable_by_key(|component| component[0]);
+    terminal
+}
+
+/// Returns the limit of the PageRank vector as α → 1.
+///
+/// The limit is Σ_C *a*_C π_C, where C ranges over the
+/// [terminal components](terminal_components), π_C is the stationary
+/// distribution of the chain restricted to C, and *a*_C is the probability
+/// that a walk starting from the uniform distribution is eventually absorbed
+/// into C. It is supported exactly on the terminal components.
+pub fn limit(chain: &Chain) -> Vec<f64> {
+    let n = chain.len();
+    let p = chain.transition();
+    let terminal = terminal_components(chain);
+    let mut in_terminal = vec![false; n];
+    for component in &terminal {
+        for &v in component {
+            in_terminal[v] = true;
+        }
+    }
+    let transient: Vec<usize> = (0..n).filter(|&v| !in_terminal[v]).collect();
+    let t = transient.len();
+    // I − P_TT, the matrix of the absorption systems.
+    let mut absorption = vec![0.0; t * t];
+    for (i, &u) in transient.iter().enumerate() {
+        for (j, &w) in transient.iter().enumerate() {
+            absorption[i * t + j] = -p[u * n + w];
+        }
+        absorption[i * t + i] += 1.0;
+    }
+
+    let mut result = vec![0.0; n];
+    for component in &terminal {
+        // Absorption probabilities from the transient nodes into C.
+        let mut h: Vec<f64> = transient
+            .iter()
+            .map(|&u| component.iter().map(|&w| p[u * n + w]).sum())
+            .collect();
+        lu::solve(&mut absorption.clone(), &mut h);
+        let weight = (component.len() as f64 + h.iter().sum::<f64>()) / n as f64;
+
+        // Stationary distribution of C: (I − P_CC)ᵀ π = 0, with the last
+        // equation replaced by Σ π = 1.
+        let k = component.len();
+        let mut a = vec![0.0; k * k];
+        for (i, &u) in component.iter().enumerate() {
+            for (j, &w) in component.iter().enumerate() {
+                a[i * k + j] = -p[w * n + u];
+            }
+            a[i * k + i] += 1.0;
+        }
+        a[(k - 1) * k..].fill(1.0);
+        let mut pi = vec![0.0; k];
+        pi[k - 1] = 1.0;
+        lu::solve(&mut a, &mut pi);
+
+        for (&v, &x) in component.iter().zip(&pi) {
+            result[v] = weight * x;
+        }
+    }
+    result
+}
+
+/// The PageRank curves of a graph, that is, the PageRank of each node as a
+/// function of the damping factor α, sampled on [0, 1].
+#[derive(Clone, Debug)]
+pub struct Ranking {
+    /// The node identifiers, in node index order.
+    pub ids: Vec<NodeId>,
+    /// The sampled values of α: *k* / [`SAMPLES`] for 0 ≤ *k* <
+    /// [`SAMPLES`], followed by 1.
+    pub alphas: Vec<f64>,
+    /// `curves[i][k]` is the PageRank of `ids[i]` at `alphas[k]`.
+    pub curves: Vec<Vec<f64>>,
+    /// The terminal components of the chain actually walked (see
+    /// [`terminal_components`]).
+    pub terminal: Vec<Vec<NodeId>>,
+    /// The dangling nodes.
+    pub dangling: Vec<NodeId>,
+    chain: Chain,
+}
+
+impl Ranking {
+    /// Computes the curves of a graph.
+    pub fn new(graph: &Graph) -> Self {
+        let chain = Chain::from_graph(graph);
+        let ids: Vec<NodeId> = graph.nodes().iter().map(|node| node.id).collect();
+        let mut alphas: Vec<f64> = (0..SAMPLES).map(|k| k as f64 / SAMPLES as f64).collect();
+        alphas.push(1.0);
+        let mut curves = vec![Vec::with_capacity(alphas.len()); ids.len()];
+        for &alpha in &alphas {
+            for (curve, x) in curves.iter_mut().zip(pagerank(&chain, alpha)) {
+                curve.push(x);
+            }
+        }
+        let terminal = terminal_components(&chain)
+            .into_iter()
+            .map(|component| component.into_iter().map(|v| ids[v]).collect())
+            .collect();
+        let dangling = (0..ids.len())
+            .filter(|&v| chain.is_dangling(v))
+            .map(|v| ids[v])
+            .collect();
+        Self {
+            ids,
+            alphas,
+            curves,
+            terminal,
+            dangling,
+            chain,
+        }
+    }
+
+    /// Returns the exact PageRank vector at `alpha` (clamped to [0, 1]),
+    /// aligned with [`ids`](Self::ids).
+    pub fn scores(&self, alpha: f64) -> Vec<f64> {
+        pagerank(&self.chain, alpha.clamp(0.0, 1.0))
+    }
+
+    /// Returns the curve of a node, if the node is part of this ranking.
+    pub fn curve(&self, id: NodeId) -> Option<&[f64]> {
+        self.ids
+            .iter()
+            .position(|&x| x == id)
+            .map(|i| self.curves[i].as_slice())
+    }
+
+    /// Returns the maximum value over all curves (zero if there are none).
+    pub fn max_value(&self) -> f64 {
+        self.curves.iter().flatten().fold(0.0, |m, &x| x.max(m))
+    }
 }
 
 #[cfg(test)]
@@ -168,5 +346,120 @@ pub(crate) mod tests {
         assert_eq!(pagerank(&Chain::new(vec![]), 0.5), Vec::<f64>::new());
         assert_close(&pagerank(&Chain::new(vec![vec![]]), 0.5), &[1.0], 1e-15);
         assert_close(&pagerank(&Chain::new(vec![vec![0]]), 0.5), &[1.0], 1e-15);
+    }
+
+    #[test]
+    fn test_sccs() {
+        assert_eq!(
+            sccs(example_after().successors()),
+            vec![vec![3, 4], vec![0, 1, 2]]
+        );
+    }
+
+    #[test]
+    fn test_terminal_components() {
+        assert_eq!(terminal_components(&example_after()), vec![vec![3, 4]]);
+        // e is dangling, hence linked to everybody: one big terminal component
+        assert_eq!(
+            terminal_components(&example_before()),
+            vec![vec![0, 1, 2, 3, 4]]
+        );
+    }
+
+    #[test]
+    fn test_terminal_self_loop() {
+        assert_eq!(
+            terminal_components(&Chain::new(vec![vec![0], vec![0]])),
+            vec![vec![0]]
+        );
+    }
+
+    #[test]
+    fn test_limit_example() {
+        assert_close(&limit(&example_after()), &[0.0, 0.0, 0.0, 0.5, 0.5], 1e-12);
+    }
+
+    #[test]
+    fn test_limit_matches_near_one() {
+        let graphs = [
+            example_after(),
+            example_before(),
+            // periodic + dangling
+            Chain::new(vec![vec![1], vec![0], vec![0, 3], vec![]]),
+            // undirected path
+            Chain::new(vec![vec![1], vec![0, 2], vec![1, 3], vec![2]]),
+            // self-loop terminal
+            Chain::new(vec![vec![1, 2], vec![1], vec![0]]),
+            // two closed cycles
+            Chain::new(vec![
+                vec![1],
+                vec![2],
+                vec![0],
+                vec![4],
+                vec![5],
+                vec![3],
+                vec![0, 3],
+            ]),
+        ];
+        for chain in &graphs {
+            let l = limit(chain);
+            assert!((l.iter().sum::<f64>() - 1.0).abs() < 1e-12);
+            assert_close(&l, &pagerank(chain, 1.0 - 1e-7), 1e-5);
+        }
+    }
+
+    #[test]
+    fn test_pagerank_at_one_is_limit() {
+        assert_eq!(pagerank(&example_after(), 1.0), limit(&example_after()));
+    }
+
+    #[test]
+    fn test_ranking_new() {
+        let mut g = Graph::new(true);
+        let ids: Vec<_> = (0..5).map(|i| g.add_node([i as f32, 0.0])).collect();
+        for (s, t) in [(0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 3)] {
+            g.add_arc(ids[s], ids[t]);
+        }
+        let r = Ranking::new(&g);
+        assert_eq!(r.ids, ids);
+        assert_eq!(r.alphas.len(), SAMPLES + 1);
+        assert_eq!(r.alphas[0], 0.0);
+        assert_eq!(*r.alphas.last().unwrap(), 1.0);
+        assert!((r.curve(ids[3]).unwrap().last().unwrap() - 0.5).abs() < 1e-12);
+        assert_eq!(r.terminal, vec![vec![ids[3], ids[4]]]);
+        assert!(r.dangling.is_empty());
+        assert_close(&r.scores(0.85), &pagerank(&example_after(), 0.85), 1e-12);
+    }
+
+    #[test]
+    fn test_ranking_empty_graph() {
+        let r = Ranking::new(&Graph::new(true));
+        assert!(r.curves.is_empty());
+        assert_eq!(r.max_value(), 0.0);
+        assert!(r.scores(0.5).is_empty());
+    }
+
+    #[test]
+    fn test_ranking_single_node() {
+        let mut g = Graph::new(true);
+        let a = g.add_node([0.0; 2]);
+        let r = Ranking::new(&g);
+        assert!(r.curve(a).unwrap().iter().all(|&x| (x - 1.0).abs() < 1e-12));
+        assert_eq!(r.dangling, vec![a]);
+    }
+
+    /// Run with `cargo test --release -- --ignored`.
+    #[test]
+    #[ignore]
+    fn test_ranking_speed_100() {
+        let mut g = Graph::new(true);
+        let ids: Vec<_> = (0..100).map(|i| g.add_node([i as f32, 0.0])).collect();
+        for i in 0..100 {
+            g.add_arc(ids[i], ids[(i * 7 + 1) % 100]);
+            g.add_arc(ids[i], ids[(i * 13 + 5) % 100]);
+        }
+        let start = std::time::Instant::now();
+        let _ = Ranking::new(&g);
+        assert!(start.elapsed().as_millis() < 50, "{:?}", start.elapsed());
     }
 }
