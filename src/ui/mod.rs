@@ -7,6 +7,7 @@
 mod canvas;
 mod geometry;
 mod palette;
+mod plot;
 
 use std::collections::HashMap;
 
@@ -316,7 +317,7 @@ impl eframe::App for App {
             .resizable(false)
             .show(ui, |ui| {
                 egui::Panel::bottom("alpha").show(ui, |ui| self.alpha_slider(ui));
-                egui::CentralPanel::default().show(ui, |_ui| {});
+                egui::CentralPanel::default().show(ui, |ui| plot::plot(self, ui));
             });
         egui::CentralPanel::default().show(ui, |ui| canvas::canvas(self, ui));
         if !self.hover_seen {
