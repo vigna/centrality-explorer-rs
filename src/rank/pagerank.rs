@@ -76,7 +76,7 @@ impl Chain {
 /// **v**, where **v** is the uniform distribution; for α = 1 it is the limit
 /// computed by [`limit`]. It always sums to one.
 pub fn pagerank(chain: &Chain, alpha: f64) -> Vec<f64> {
-    debug_assert!((0.0..=1.0).contains(&alpha), "alpha must be in [0, 1]");
+    debug_assert!((0.0..=1.0).contains(&alpha), "alpha must be in [0..1]");
     if alpha >= 1.0 {
         return limit(chain);
     }

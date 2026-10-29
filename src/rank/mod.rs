@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::graph::{Graph, NodeId};
 
-/// The number of values of the parameter sampled in [0, 1) by [`Ranking`]
-/// for PageRank and Katz's index, which adds the right end, 1.
+/// The number of values of the parameter sampled in [0 . . 1) by [`Ranking`]
+/// for Katz's index and PageRank, which adds the right end, 1.
 pub const SAMPLES: usize = 256;
 
 /// The number *K* of iterations of the power method computing Seeley's index
@@ -35,30 +35,31 @@ pub enum Centrality {
     Harmonic,
     /// Betweenness centrality.
     Betweenness,
-    /// Seeley's index.
-    Seeley,
     /// Eigenvector centrality.
     Eigenvector,
+    /// Seeley's index.
+    Seeley,
+    /// Katz's index.
+    Katz,
     /// PageRank.
     #[default]
     PageRank,
-    /// Katz's index.
-    Katz,
 }
 
 impl Centrality {
     /// All centralities, in menu order, that is, by family: geometric
-    /// (closeness, harmonic, betweenness), spectral by eigenvector (Seeley's
-    /// index, eigenvector centrality), and spectral by damped sum (PageRank,
-    /// Katz's index).
+    /// (closeness, harmonic, betweenness), spectral by eigenvector
+    /// (eigenvector centrality, Seeley's index), and spectral by damped sum
+    /// (Katz's index, PageRank); in each spectral family, the centrality of
+    /// the adjacency matrix comes before that of its normalization.
     pub const ALL: [Self; 7] = [
         Self::Closeness,
         Self::Harmonic,
         Self::Betweenness,
-        Self::Seeley,
         Self::Eigenvector,
-        Self::PageRank,
+        Self::Seeley,
         Self::Katz,
+        Self::PageRank,
     ];
 
     /// Returns the name of the centrality, for display.
@@ -78,30 +79,30 @@ impl Centrality {
 /// The x-axis of the curves of a [`Ranking`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Axis {
-    /// The damping factor α ∈ [0, 1] of PageRank.
-    Alpha,
-    /// βρ ∈ [0, 1], where β is the parameter of Katz's index and ρ > 0 is
-    /// the spectral radius of the adjacency matrix.
-    BetaRho,
-    /// The parameter β ∈ [0, 1] of Katz's index, when ρ = 0.
-    Beta,
-    /// The iteration *k* = 0, 1, …, [`ITERATIONS`] of the power method
-    /// computing Seeley's index or eigenvector centrality.
-    Iteration,
     /// No parameter: the curves are constant.
     Flat,
+    /// The iteration *k* = 0, 1, …, [`ITERATIONS`] of the power method
+    /// computing eigenvector centrality or Seeley's index.
+    Iteration,
+    /// βρ ∈ [0 . . 1], where β is the parameter of Katz's index and ρ > 0 is
+    /// the spectral radius of the adjacency matrix.
+    BetaRho,
+    /// The parameter β ∈ [0 . . 1] of Katz's index, when ρ = 0.
+    Beta,
+    /// The damping factor α ∈ [0 . . 1] of PageRank.
+    Alpha,
 }
 
 impl Axis {
-    /// Returns the label of the axis: "α", "βρ", "β", "k", or the empty
-    /// string for [`Flat`](Self::Flat).
+    /// Returns the label of the axis: the empty string for
+    /// [`Flat`](Self::Flat), and "k", "βρ", "β", or "α" otherwise.
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Alpha => "α",
+            Self::Flat => "",
+            Self::Iteration => "k",
             Self::BetaRho => "βρ",
             Self::Beta => "β",
-            Self::Iteration => "k",
-            Self::Flat => "",
+            Self::Alpha => "α",
         }
     }
 
@@ -166,19 +167,18 @@ enum Exact {
 pub struct Ranking {
     /// The centrality.
     pub centrality: Centrality,
-    /// The x-axis: [`Axis::Alpha`] for PageRank; for Katz's index,
-    /// [`Axis::BetaRho`] if ρ > 0 and [`Axis::Beta`] if ρ = 0;
-    /// [`Axis::Iteration`] for Seeley's index and eigenvector centrality;
-    /// and [`Axis::Flat`] for closeness, harmonic, and betweenness.
+    /// The x-axis: [`Axis::Flat`] for closeness, harmonic, and betweenness;
+    /// [`Axis::Iteration`] for eigenvector centrality and Seeley's index;
+    /// for Katz's index, [`Axis::BetaRho`] if ρ > 0 and [`Axis::Beta`] if
+    /// ρ = 0; and [`Axis::Alpha`] for PageRank.
     pub axis: Axis,
     /// The node identifiers, in node index order.
     pub ids: Vec<NodeId>,
-    /// The sampled values of the x-axis: *k* / [`SAMPLES`] for 0 ≤ *k* <
-    /// [`SAMPLES`], followed by 1, for PageRank and Katz's index; the
-    /// iterations *k* = 0, 1, …, [`ITERATIONS`] for Seeley's index and
-    /// eigenvector centrality,
-    /// stopping before [`vanished`](Self::vanished), if any; and 0 and 1 for
-    /// the [flat](Axis::Flat) centralities.
+    /// The sampled values of the x-axis: 0 and 1 for the
+    /// [flat](Axis::Flat) centralities; the iterations *k* = 0, 1, …,
+    /// [`ITERATIONS`] for eigenvector centrality and Seeley's index, stopping
+    /// before [`vanished`](Self::vanished), if any; and *k* / [`SAMPLES`] for
+    /// 0 ≤ *k* < [`SAMPLES`], followed by 1, for Katz's index and PageRank.
     pub xs: Vec<f64>,
     /// `curves[i][k]` is the score of `ids[i]` at `xs[k]`.
     ///
@@ -324,8 +324,8 @@ impl Ranking {
     /// - [`Axis::Alpha`]: PageRank with damping factor *x*, clamped to [0,
     ///   1].
     /// - [`Axis::BetaRho`]: Katz's index with β = *x* / ρ, for *x* clamped
-    ///   to [0, 1), and its exact limit for *x* ≥ 1.
-    /// - [`Axis::Beta`]: Katz's index with β = *x*, clamped to [0, 1].
+    ///   to [0 . . 1), and its exact limit for *x* ≥ 1.
+    /// - [`Axis::Beta`]: Katz's index with β = *x*, clamped to [0 . . 1].
     /// - [`Axis::Iteration`]: the iterate at *k* = *x*, rounded, or zero if
     ///   *k* is beyond the last sample, as it happens from the iteration at
     ///   which the iterates [vanish](Self::vanished).

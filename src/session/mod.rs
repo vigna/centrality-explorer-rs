@@ -25,9 +25,9 @@ use crate::rank::{Centrality, ITERATIONS, Ranking};
 /// before the last structural edit, so that the ghost can be recomputed when
 /// the centrality changes.
 ///
-/// Each centrality has its own parameter: the damping factor α for PageRank,
-/// the parameter βρ (or β) for Katz's index, and the iteration *k* for
-/// Seeley's index and eigenvector centrality. Switching centrality and
+/// Each centrality has its own parameter: the iteration *k* for eigenvector
+/// centrality and Seeley's index, the parameter βρ (or β) for Katz's index,
+/// and the damping factor α for PageRank. Switching centrality and
 /// changing parameters are neither undoable nor unsaved changes.
 #[derive(Debug)]
 pub struct Session {
@@ -39,9 +39,9 @@ pub struct Session {
     before: Option<Graph>,
     scores: Vec<f64>,
     centrality: Centrality,
-    alpha: f64,
-    katz: f64,
     iteration: usize,
+    katz: f64,
+    alpha: f64,
     undo: Vec<Graph>,
     redo: Vec<Graph>,
     drag_origin: Option<Graph>,
@@ -72,8 +72,8 @@ impl Session {
             before: None,
             scores: Vec::new(),
             centrality: settings.centrality,
-            alpha: settings.alpha.clamp(0.0, 1.0),
             katz: settings.katz.clamp(0.0, 1.0),
+            alpha: settings.alpha.clamp(0.0, 1.0),
             iteration: ITERATIONS,
             undo: Vec::new(),
             redo: Vec::new(),
@@ -110,8 +110,8 @@ impl Session {
     pub fn settings(&self) -> Settings {
         Settings {
             centrality: self.centrality,
-            alpha: self.alpha,
             katz: self.katz,
+            alpha: self.alpha,
         }
     }
 
@@ -139,7 +139,7 @@ impl Session {
         self.alpha
     }
 
-    /// Sets the damping factor, clamped to [0, 1].
+    /// Sets the damping factor, clamped to [0 . . 1].
     ///
     /// This is neither undoable nor an unsaved change.
     pub fn set_alpha(&mut self, alpha: f64) {
@@ -157,35 +157,35 @@ impl Session {
         self.katz
     }
 
-    /// Returns the current iteration *k* of Seeley's index and eigenvector
-    /// centrality.
+    /// Returns the current iteration *k* of eigenvector centrality and
+    /// Seeley's index.
     pub fn iteration(&self) -> usize {
         self.iteration
     }
 
-    /// Returns the parameter of the current centrality: α for PageRank, βρ
-    /// (or β) for Katz's index, *k* for Seeley's index and eigenvector
-    /// centrality, and `None` for the others.
+    /// Returns the parameter of the current centrality: *k* for eigenvector
+    /// centrality and Seeley's index, βρ (or β) for Katz's index, α for
+    /// PageRank, and `None` for the others.
     pub fn param(&self) -> Option<f64> {
         match self.centrality {
             Centrality::PageRank => Some(self.alpha),
             Centrality::Katz => Some(self.katz),
-            Centrality::Seeley | Centrality::Eigenvector => Some(self.iteration as f64),
+            Centrality::Eigenvector | Centrality::Seeley => Some(self.iteration as f64),
             _ => None,
         }
     }
 
     /// Sets the parameter of the current centrality.
     ///
-    /// α and the Katz parameter are clamped to [0, 1]; *k* is rounded and
-    /// clamped to 0..=[`ITERATIONS`]. Does nothing for centralities without
+    /// α and the Katz parameter are clamped to [0 . . 1]; *k* is rounded and
+    /// clamped to [0 . . [`ITERATIONS`]]. Does nothing for centralities without
     /// parameter. This is neither undoable nor an unsaved change.
     pub fn set_param(&mut self, x: f64) {
         let old = self.param();
         match self.centrality {
             Centrality::PageRank => self.alpha = x.clamp(0.0, 1.0),
             Centrality::Katz => self.katz = x.clamp(0.0, 1.0),
-            Centrality::Seeley | Centrality::Eigenvector => {
+            Centrality::Eigenvector | Centrality::Seeley => {
                 self.iteration = x.round().clamp(0.0, ITERATIONS as f64) as usize;
             }
             _ => return,
@@ -200,7 +200,7 @@ impl Session {
     pub fn step_param(&mut self, steps: i32) {
         if let Some(v) = self.param() {
             self.set_param(match self.centrality {
-                Centrality::PageRank | Centrality::Katz => {
+                Centrality::Katz | Centrality::PageRank => {
                     ((v * 100.0).round() + f64::from(steps)) / 100.0
                 }
                 _ => v + f64::from(steps),

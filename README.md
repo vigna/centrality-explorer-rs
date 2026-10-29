@@ -3,28 +3,24 @@
 A teaching aid to build intuition about centrality measures. The instructor
 edits a small graph at a projector, and the class watches, in real time, how
 the score of each node changes. There are seven centralities, in three
-families (for details on the spectral ones, see Sebastiano Vigna,
-[*Spectral Ranking*](https://arxiv.org/abs/0912.0238)):
+families:
 
 | Family | Centralities | x-axis of the plot |
 |---|---|---|
 | Geometric | [Closeness](https://en.wikipedia.org/wiki/Closeness_centrality), [harmonic centrality](https://en.wikipedia.org/wiki/Closeness_centrality#In_disconnected_graphs), [betweenness](https://en.wikipedia.org/wiki/Betweenness_centrality) | None: the curves are horizontal lines |
-| Spectral (eigenvector) | [Eigenvector (Landau) centrality](https://en.wikipedia.org/wiki/Eigenvector_centrality), Seeley's index,  | The iteration *k* = 0, 1, …, 50 of the power method |
-| Spectral (damped sum) | [PageRank](https://en.wikipedia.org/wiki/PageRank), [Katz's index](https://en.wikipedia.org/wiki/Katz_centrality) | α ∈ [0 . . 1] for PageRank, βρ ∈ [0 . . 1] for Katz's index |
+| Spectral (eigenvector) | [Eigenvector (Landau) centrality](https://en.wikipedia.org/wiki/Eigenvector_centrality), Seeley's index | The iteration *k* = 0, 1, …, 50 of the power method |
+| Spectral (damped sum) | [Katz's index](https://en.wikipedia.org/wiki/Katz_centrality), [PageRank](https://en.wikipedia.org/wiki/PageRank) | βρ ∈ [0 . . 1] for Katz's index, α ∈ [0 . . 1] for PageRank |
 
-The central picture is the plot of the score of each node against the
-parameter of the centrality. When an edit closes or opens a sink, the
-PageRank curves change shape all of a sudden, most visibly near α = 1, where
-the score concentrates on the sinks.
-
-The two spectral families are related. Seeley's index and eigenvector
-centrality are dominant eigenvectors, of the transition matrix of the random
-walk and of the adjacency matrix, and the damped sums tend to them as the
-damping factor tends to its limit: PageRank tends, as α → 1, to a Seeley's
-index, and Katz's index tends, as βρ → 1, to an eigenvector centrality. The
-plots of the eigenvectors show the iterates of the power method, a standard
-but contingent way of computing them: on periodic structures the iterates
-can zigzag forever, even though the eigenvector exists.
+The two spectral families are related. Eigenvector centrality and Seeley's index
+are dominant eigenvectors, of the adjacency matrix and of the adjacency matrix
+normalized to a row-stochastic matrix, respectively. Katz's index and PageRank
+are damped sums of the powers of the same matrices, and the damped sums tend to
+the dominant eigenvectors as the damping factor tends to its limit: Katz's index
+tends, as βρ → 1, to eigenvector centrality, and PageRank tends, as α → 1, to
+Seeley's index. The plots of the eigenvectors show the iterates of the power
+method: on periodic structures the iterates can zigzag forever, even though the
+eigenvector exists. For details, see
+“[*Spectral Ranking*](https://arxiv.org/abs/0912.0238)”.
 
 ## Building and Running
 
@@ -33,8 +29,7 @@ cargo run --release
 ```
 
 The crate is compiled with `-C target-cpu=native` (see `.cargo/config.toml`),
-so build it on the machine that runs it: a binary built on a recent CPU may
-not run on an older one.
+so build it on the machine that runs it.
 
 ## Reading the Screen
 
@@ -48,10 +43,10 @@ not run on an older one.
   size, and a node with score 1/*n*, where *n* is the number of nodes, has
   the standard size.
 - A node whose score is exactly zero has a thicker gray outline: for
-  example, the nodes outside the sinks in the limit of PageRank at α = 1, or
-  every node once the iterates of eigenvector centrality vanish. A score
-  that is merely small, such as that of the same nodes at α = 0.99, is not
-  zero, and keeps the dark outline.
+  example, every node once the iterates of eigenvector centrality vanish, or
+  the nodes outside the sinks in the limit of PageRank at α = 1. A score that
+  is merely small, such as that of the same nodes at α = 0.99, is not zero,
+  and keeps the dark outline.
 - The vertical line in the plot marks the current value of the parameter,
   with a dot on each curve; clicking or dragging in the plot moves it. Node
   labels at the right end of the plot name the curves.
@@ -61,7 +56,7 @@ not run on an older one.
   graph). They show the current centrality on the graph from before the
   edit, so they survive a switch of centrality: make an edit, then switch
   among the centralities to compare the effect of the same edit on each.
-- The y-axis adapts to the largest score; View → Fixed y-axis [0, 1] keeps
+- The y-axis adapts to the largest score; View → Fixed y-axis [0..1] keeps
   it at [0 . . 1].
 
 Hovering a node highlights it and its curve, and shows the node's score;
@@ -75,18 +70,18 @@ hovering a curve highlights it and its node.
   edit work as for the other centralities.
 - There are no hulls and no dashed outlines.
 
-### Spectral (Eigenvector): Seeley's Index and Eigenvector Centrality
+### Spectral (Eigenvector): Eigenvector Centrality and Seeley's Index
 
-- The scores are dominant eigenvectors, and the plot shows how the power
-  method, from the uniform vector, computes them: the x-axis is the
-  iteration *k* = 0, 1, …, 50, and the curves join the iterates with
-  straight segments, so an oscillation shows up as a zigzag. The power
-  method is just one way of computing the eigenvectors: oscillating or
-  vanishing iterates are a property of the method, not of the centrality.
+- The scores are dominant eigenvectors, and the plot shows how the power method,
+  from the uniform vector, computes them: the x-axis is the iteration *k* = 0,
+  1, …, 50, and the curves join the iterates with straight segments, so an
+  oscillation shows up as a zigzag. The power method is just one way of
+  computing the eigenvectors: oscillating or vanishing iterates are a property
+  of the method, not of the centrality.
 - The slider takes integer values, starts at 50, and is shared by the two
   centralities; node sizes show the iterate at its *k*.
-- Seeley's index shows the same hulls and dashed outlines as PageRank, and
-  eigenvector centrality the same hulls as Katz's index (see below).
+- Eigenvector centrality shows the same hulls as Katz's index, and Seeley's
+  index shows the same hulls and dashed outlines as PageRank (see below).
 - If the iterates of eigenvector centrality vanish within the plotted
   iterations, as they do on every graph without cycles (self-loops included)
   whose longest path has fewer than 50 arcs, the curves stop at the last nonzero
@@ -94,16 +89,20 @@ hovering a curve highlights it and its node.
   which iteration on, and from that iteration on all nodes have the minimum
   size.
 
-### Spectral (Damped Sum): PageRank and Katz's Index
+### Spectral (Damped Sum): Katz's Index and PageRank
 
-- The x-axis is the damping factor α for PageRank, and βρ for Katz's index,
-  where β is the parameter of the index and ρ is the spectral radius of the
+- The x-axis is βρ for Katz's index and the damping factor α for PageRank,
+  where β is the parameter of Katz's index and ρ is the spectral radius of the
   adjacency matrix, shown next to the slider. If ρ = 0, the x-axis is β
   itself (see below). Both sliders start at 0.85, and each centrality keeps
   its own value.
-- The right end of the curves is the exact limit as α → 1, or as βρ → 1 if
-  ρ > 0: a Seeley's index for PageRank, and an eigenvector centrality for
-  Katz's index.
+- The right end of the curves is the exact limit as βρ → 1, if ρ > 0, or as
+  α → 1: eigenvector centrality for Katz's index, and Seeley's index for
+  PageRank.
+- For Katz's index, if ρ > 0, shaded hulls labeled “dominant” mark the
+  dominant classes: strongly connected components whose spectral radius is
+  ρ, which determine the limit as βρ → 1. There are no dashed outlines,
+  since dangling nodes are not special for the adjacency matrix.
 - For PageRank, shaded hulls labeled “sinks” mark the sinks: terminal
   strongly connected components (groups of nodes with no edge leaving them)
   other than lone dangling nodes. A dangling node is terminal, but the walk
@@ -112,10 +111,6 @@ hovering a curve highlights it and its node.
 - For PageRank, nodes with a dashed outline are dangling: they have no
   outgoing edges, so the walk jumps from them to a node chosen uniformly at
   random.
-- For Katz's index, if ρ > 0, shaded hulls labeled “dominant” mark the
-  dominant classes: strongly connected components whose spectral radius is
-  ρ, which determine the limit as βρ → 1. There are no dashed outlines,
-  since dangling nodes are not special for the adjacency matrix.
 
 ## Examples
 
@@ -156,6 +151,32 @@ between two other nodes, so its betweenness is zero, and its outline is gray.
 The edit adds no shortest path through any node, so the dashed curves coincide
 with the current ones.
 
+### Eigenvector Centrality
+
+![Eigenvector centrality](screenshots/eigenvector.png)
+
+The iterate **1** *A*<sup>*k*</sup> counts the walks of length *k* ending at
+each node. Each node of the triangle is reached by exactly one such walk,
+whereas the walks reaching *d* and *e* grow linearly with *k*, *d* being fed by
+both *c* and *e*. Eigenvector centrality is ½ on *d* and *e* and zero on the
+triangle, the limit of Katz's index; the iterates converge to it, but slowly,
+like 1/*k*, because ν = 2: at *k* = 50, the triangle still has 1/55 each, and
+the zigzag of *d* and *e* fades like 1/*k*, too. Before the edit, **1**
+*A*<sup>*k*</sup> = **1** for every *k*, so the dashed iterates are uniform.
+
+![Eigenvector centrality, vanishing](screenshots/eigenvector_vanishing.png)
+
+Here the iterates vanish. The 4-cycle *a* → *b* → *c* → *d* → *a* (dashed: on a
+cycle, **1** *A*<sup>*k*</sup> = **1**) loses the arc *d* → *a*, leaving the
+path *a* → *b* → *c* → *d*. Now **1** *A* = (0, 1, 1, 1), since no walk of
+length 1 ends at *a*; then **1** *A*² = (0, 0, 1, 1), **1** *A*³ = (0, 0, 0, 1),
+and **1** *A*⁴ = 0. Yet (0, 0, 0, 1) is an eigenvector, with eigenvalue
+0 = ρ, and it is eigenvector centrality on the path: the power method
+stops only because it cannot normalize the next iterate. The curves stop at
+*k* = 3, the note says that the iterates vanish from *k* = 4 on, and at
+*k* = 50 every node has score zero: all outlines are gray, and all labels sit
+at 0.
+
 ### Seeley's Index
 
 ![Seeley's index](screenshots/seeley.png)
@@ -169,33 +190,20 @@ zero, and the outlines stay dark. The 2-cycle is periodic, and the iterates
 of *d* and *e* alternate forever around ½, with constant amplitude: the
 oscillation belongs to the power method, not to the eigenvector. Before the
 edit, the jump from the dangling node *e* broke the periodicity, and the
-dashed iterates converge, to the Seeley's index of that graph.
+dashed iterates converge to Seeley's index of that graph.
 
-### Eigenvector Centrality
+### Katz's Index
 
-![Eigenvector centrality](screenshots/eigenvector.png)
+![Katz's index](screenshots/katz.png)
 
-The iterate **1** *A*<sup>*k*</sup> counts the walks of length *k* ending at
-each node. Each node of the triangle is reached by exactly one such walk,
-whereas the walks reaching *d* and *e* grow linearly with *k*, *d* being fed by
-both *c* and *e*. The eigenvector centrality is ½ on *d* and *e* and zero on the
-triangle, the limit of Katz's index; the iterates converge to it, but slowly,
-like 1/*k*, because ν = 2: at *k* = 50, the triangle still has 1/55 each, and
-the zigzag of *d* and *e* fades like 1/*k*, too. Before the edit, **1**
-*A*<sup>*k*</sup> = **1** for every *k*, so the dashed iterates are uniform.
-
-![Eigenvector centrality, vanishing](screenshots/eigenvector_vanishing.png)
-
-Here the iterates vanish. The 4-cycle *a* → *b* → *c* → *d* → *a* (dashed: on a
-cycle, **1** *A*<sup>*k*</sup> = **1**) loses the arc *d* → *a*, leaving the
-path *a* → *b* → *c* → *d*. Now **1** *A* = (0, 1, 1, 1), since no walk of
-length 1 ends at *a*; then **1** *A*² = (0, 0, 1, 1), **1** *A*³ = (0, 0, 0, 1),
-and **1** *A*⁴ = 0. Yet (0, 0, 0, 1) is an eigenvector, with eigenvalue
-0 = ρ, and it is the eigenvector centrality of the path: the power method
-stops only because it cannot normalize the next iterate. The curves stop at
-*k* = 3, the note says that the iterates vanish from *k* = 4 on, and at
-*k* = 50 every node has score zero: all outlines are gray, and all labels sit
-at 0.
+The triangle and the 2-cycle both have spectral radius 1 = ρ, so both are
+dominant (two hulls), and the first leads to the second (ν = 2): as βρ → 1,
+the limit, which is eigenvector centrality, is ½ on *d* and *e*, and zero on the
+upstream triangle, although the triangle is dominant, too. The curves of *a*,
+*b*, and *c* coincide, since each of them is reached only from the previous node
+of the triangle. Before the edit, every node had exactly one incoming arc, so
+**1** *A* = **1**, and Katz's index is uniform for every β: the dashed curves
+coincide at 0.2.
 
 ### PageRank
 
@@ -207,19 +215,6 @@ that of *a*, *b*, and *c* falls to zero, all of a sudden near α = 1; drag the
 slider to α = 1, and *a*, *b*, and *c* get a gray outline. Before the edit, the
 walk restarted from the dangling node *e*, there was no sink, and the limit at α
 = 1 (the right end of the dashed curves) is positive on every node.
-
-### Katz's Index
-
-![Katz's index](screenshots/katz.png)
-
-The triangle and the 2-cycle both have spectral radius 1 = ρ, so both are
-dominant (two hulls), and the first leads to the second (ν = 2): as βρ → 1,
-the limit, an eigenvector centrality, is ½ on *d* and *e*, and zero on the
-upstream triangle, although the triangle is dominant, too. The curves of *a*,
-*b*, and *c* coincide, since each of them is reached only from the previous node
-of the triangle. Before the edit, every node had exactly one incoming arc, so
-**1** *A* = **1**, and Katz's index is uniform for every β: the dashed curves
-coincide at 0.2.
 
 The screenshots are regenerated, on a machine with a GPU, by
 
@@ -253,11 +248,11 @@ Cmd is Ctrl on Linux and Windows, and Alt is Option on macOS.
 | Random graph | Cmd-R |
 | Force-directed, circle, components layout | Cmd-1, Cmd-2, Cmd-3 |
 | Closeness, harmonic centrality, betweenness | Cmd-Alt-1, Cmd-Alt-2, Cmd-Alt-3 |
-| Seeley's index, eigenvector centrality | Cmd-Alt-4, Cmd-Alt-5 |
-| PageRank, Katz's index | Cmd-Alt-6, Cmd-Alt-7 |
+| Eigenvector centrality, Seeley's index | Cmd-Alt-4, Cmd-Alt-5 |
+| Katz's index, PageRank | Cmd-Alt-6, Cmd-Alt-7 |
 | Zoom in, out, reset | Cmd-+, Cmd-−, Cmd-0 |
 | Full screen | Cmd-Shift-F |
-| Change α, βρ, or β by 0.01 (0.05) | ← and → (with Shift) |
+| Change βρ, β, or α by 0.01 (0.05) | ← and → (with Shift) |
 | Change *k* by 1 (5) | ← and → (with Shift) |
 
 The centralities are also in the Centrality menu, grouped by family.
@@ -274,10 +269,9 @@ missing structure by hand.
 
 ## Files
 
-Graphs are saved as JSON, together with the current centrality, α, and the
-parameter of Katz's index; opening a file restores them. Files saved by
-version 0.1.0 open with PageRank, and with the parameter of Katz's index at
-0.85. The iteration *k* is not saved, and starts at 50.
+Graphs are saved as JSON, together with the current centrality, the parameter of
+Katz's index, and α; opening a file restores them. The iteration *k* is not
+saved, and starts at 50.
 
 ## The Mathematics
 
@@ -303,8 +297,7 @@ curves at 0, and all nodes at the minimum size.
 
 ### Geometric: Closeness, Harmonic Centrality, and Betweenness
 
-These follow Paolo Boldi and Sebastiano Vigna, *Axioms for Centrality*,
-Internet Mathematics, 2014. For closeness and harmonic centrality, the
+For closeness and harmonic centrality, the
 distance *d*(*y*, *x*) (the length of a shortest path from *y* to *x*, or ∞
 if there is none) is measured towards *x*, so that, as for the spectral
 centralities, a node is central if it is reached.
@@ -333,27 +326,10 @@ above *b* (3/2 against 1).
 
 ### Spectral (Eigenvector)
 
-Seeley's index and eigenvector centrality are dominant left eigenvectors, of
-*P* and of *A*. The program shows the iterates of the power method from the
+Eigenvector centrality and Seeley's index are dominant left eigenvectors, of
+*A* and of *P*. The program shows the iterates of the power method from the
 uniform vector, which is one way of computing them among many: the iterates
 are contingent, and when they do not converge the eigenvector still exists.
-
-#### Seeley's Index
-
-Seeley's index is a stationary distribution of the random walk, that is, a
-solution of **x** = **x** *P* that is a distribution; it may not be unique. The
-plot shows the iterates **x**₀, **x**₁, …, **x**₅₀ of the power method from the
-uniform distribution:
-
-**x**₀ = (1/*n*, …, 1/*n*), **x**<sub>*k* + 1</sub> = **x**<sub>*k*</sub> *P*.
-
-The iterate **x**<sub>*k*</sub> is the distribution of the walk after *k* steps
-from a node chosen uniformly at random, so it sums to 1. When the iterates
-converge, their limit is a Seeley's index, the same as the limit of PageRank as
-α → 1. On periodic structures they can oscillate forever, although Seeley's
-index exists: on *a* ⇄ *b*, *c* → *a* they alternate, from *k* = 1 on, between
-(⅔, ⅓, 0) and (⅓, ⅔, 0), whereas Seeley's index, and the limit of PageRank, is
-(½, ½, 0), the long-run average of the iterates.
 
 #### Eigenvector Centrality
 
@@ -367,10 +343,10 @@ ones, normalized:
 
 The iterate **x**<sub>*k*</sub> is **1** *A*<sup>*k*</sup> normalized: the
 number of walks of length *k* ending at each node, as a fraction of all walks of
-length *k*. When the iterates converge, their limit is an eigenvector
-centrality, the same as the limit of Katz's index as βρ → 1. But the iterates
-may also vanish, oscillate, or converge slowly, which are properties of the
-power method, not of eigenvector centrality:
+length *k*. When the iterates converge, their limit is eigenvector centrality,
+the same as the limit of Katz's index as βρ → 1. But the iterates may also
+vanish, oscillate, or converge slowly, which are properties of the power method,
+not of eigenvector centrality:
 
 - If the graph has no cycles (self-loops included), that is, if ρ = 0, the
   iterates vanish: if the longest path has length *L* (necessarily less than
@@ -383,37 +359,38 @@ power method, not of eigenvector centrality:
   for *k* ≥ *L* + 1”, with the value of *L* + 1; otherwise, the curves run to
   *k* = 50, with no note.
 - On periodic structures the iterates can oscillate forever, although the
-  eigenvector exists: on an undirected star they alternate between the
-  uniform vector and the vector with ½ on the center and the other half
-  split evenly among the leaves, whereas the eigenvector centrality of a
-  star with *m* leaves gives the center √*m* times the score of a leaf.
+  eigenvector exists: on an undirected star they alternate between the uniform
+  vector and the vector with ½ on the center and the other half split evenly
+  among the leaves, whereas eigenvector centrality, on a star with *m* leaves,
+  gives the center √*m* times the score of a leaf.
 - When ν > 1 (ν is defined below, under Katz's index), convergence is slow, like
   1/*k*, and at *k* = 50 the curves are still visibly drifting: on *a* → *b*
   with a self-loop on both nodes, **1** *A*<sup>*k*</sup> = (1, *k* + 1), so at
   *k* = 50 node *a* still has score 1/52, although its limit is zero.
 
+#### Seeley's Index
+
+Seeley's index is a stationary distribution of the random walk, that is, a
+solution of **x** = **x** *P* that is a distribution; it may not be unique. The
+plot shows the iterates **x**₀, **x**₁, …, **x**₅₀ of the power method from the
+uniform distribution:
+
+**x**₀ = (1/*n*, …, 1/*n*), **x**<sub>*k* + 1</sub> = **x**<sub>*k*</sub> *P*.
+
+The iterate **x**<sub>*k*</sub> is the distribution of the walk after *k* steps
+from a node chosen uniformly at random, so it sums to 1. When the iterates
+converge, their limit is Seeley's index, the same as the limit of PageRank as
+α → 1. On periodic structures they can oscillate forever, although Seeley's
+index exists: on *a* ⇄ *b*, *c* → *a* they alternate, from *k* = 1 on, between
+(⅔, ⅓, 0) and (⅓, ⅔, 0), whereas Seeley's index, and the limit of PageRank, is
+(½, ½, 0), the long-run average of the iterates.
+
 ### Spectral (Damped Sum)
 
-PageRank and Katz's index are damped sums of the powers of *P* and of *A*,
-and tend to the eigenvectors above as the damping factor tends to its limit:
-PageRank, as α → 1, to a Seeley's index, and Katz's index, if ρ > 0, as
-βρ → 1, to an eigenvector centrality.
-
-#### PageRank
-
-Dangling nodes jump uniformly to every node, and the preference vector is
-uniform. For α < 1 the curves are computed exactly, by solving (*I* − α
-*P*<sup>*T*</sup>) **x** = (1 − α) **v** at each plotted α, rather than through
-a truncated power series, which is inaccurate near α = 1 on periodic structures.
-
-The value at α = 1 is the exact limit of PageRank as α → 1. If the graph has
-sinks, the limit is supported exactly on them: each sink receives the
-probability that a walk from the uniform distribution is absorbed into it,
-spread according to its stationary distribution, and every other node,
-including dangling ones, gets zero. If instead the graph has no sink, every
-terminal component is a dangling node, the walk restarts from them, and the
-limit is the stationary distribution of the walk, which is positive on every
-node. In both cases, the limit is a Seeley's index.
+Katz's index and PageRank are damped sums of the powers of *A* and of *P*, and
+tend to the eigenvectors above as the damping factor tends to its limit: Katz's
+index, if ρ > 0, as βρ → 1, to eigenvector centrality, and PageRank, as α → 1,
+to Seeley's index.
 
 #### Katz's Index
 
@@ -449,7 +426,7 @@ equals ρ (within a relative tolerance of 10⁻⁹), and let ν be the maximum
 number of dominant classes on a path of the condensation, the acyclic graph of
 the strongly connected components. Then (1 − βρ)<sup>ν</sup> **k**(β) tends to
 a nonzero nonnegative vector, and **κ**(β) tends to its normalization, which
-is an eigenvector centrality, that is, a dominant left eigenvector of *A*.
+is eigenvector centrality, that is, a dominant left eigenvector of *A*.
 
 The limit is supported exactly on the dominant classes that end a chain of ν
 dominant classes, and on the nodes they reach. In particular, when dominant
@@ -459,3 +436,19 @@ and *d* and zero on *a* and *b*. The nodes reached by the dominant classes that
 end a chain of ν dominant classes get a positive limit, too: on the 2-cycles *a*
 ⇄ *b* and *c* ⇄ *d* with arcs *b* → *e* and *d* → *e*, the limit is ⅙ on each of
 *a*, *b*, *c*, and *d*, and ⅓ on *e*. 
+
+#### PageRank
+
+Dangling nodes jump uniformly to every node, and the preference vector is
+uniform. For α < 1 the curves are computed exactly, by solving (*I* − α
+*P*<sup>*T*</sup>) **x** = (1 − α) **v** at each plotted α, rather than through
+a truncated power series, which is inaccurate near α = 1 on periodic structures.
+
+The value at α = 1 is the exact limit of PageRank as α → 1. If the graph has
+sinks, the limit is supported exactly on them: each sink receives the
+probability that a walk from the uniform distribution is absorbed into it,
+spread according to its stationary distribution, and every other node,
+including dangling ones, gets zero. If instead the graph has no sink, every
+terminal component is a dangling node, the walk restarts from them, and the
+limit is the stationary distribution of the walk, which is positive on every
+node. In both cases, the limit is Seeley's index.

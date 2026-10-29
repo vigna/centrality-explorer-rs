@@ -11,7 +11,7 @@ pub const R_MAX: f32 = 64.0;
 
 /// Returns the radius of a node with the given score in a graph with `n`
 /// nodes: the area is proportional to the score, normalized so that the
-/// uniform score 1/*n* gives [`R0`], and clamped to [[`R_MIN`], [`R_MAX`]].
+/// uniform score 1/*n* gives [`R0`], and clamped to [[`R_MIN`] . . [`R_MAX`]].
 pub fn node_radius(score: f64, n: usize) -> f32 {
     (R0 * (score * n as f64).sqrt() as f32).clamp(R_MIN, R_MAX)
 }
@@ -80,7 +80,7 @@ pub fn hull(circles: &[([f32; 2], f32)], pad: f32) -> Vec<[f32; 2]> {
     hull
 }
 
-/// Returns a cubic ease-in-out of `t`, clamped to [0, 1].
+/// Returns a cubic ease-in-out of `t`, clamped to [0 . . 1].
 pub fn ease(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     if t < 0.5 {

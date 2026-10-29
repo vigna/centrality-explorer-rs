@@ -1,5 +1,5 @@
-//! Iterates of the power method computing Seeley's index and eigenvector
-//! centrality.
+//! Iterates of the power method computing eigenvector centrality and
+//! Seeley's index.
 //!
 //! The centralities are dominant eigenvectors, and the power method is just
 //! one way of computing them: its iterates may vanish, or fail to converge,

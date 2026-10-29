@@ -38,24 +38,24 @@ fn default_katz() -> f64 {
 }
 
 /// The settings saved with a graph: the current centrality and the values
-/// of the damping factor α and of the Katz parameter βρ (or β).
+/// of the Katz parameter βρ (or β) and of the damping factor α.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
     /// The current centrality.
     pub centrality: Centrality,
-    /// The damping factor α, in [0, 1].
-    pub alpha: f64,
-    /// The Katz parameter, in [0, 1].
+    /// The Katz parameter, in [0 . . 1].
     pub katz: f64,
+    /// The damping factor α, in [0 . . 1].
+    pub alpha: f64,
 }
 
 impl Default for Settings {
-    /// PageRank, with α = 0.85 and βρ = 0.85.
+    /// PageRank, with βρ = 0.85 and α = 0.85.
     fn default() -> Self {
         Self {
             centrality: Centrality::PageRank,
-            alpha: 0.85,
             katz: DEFAULT_KATZ,
+            alpha: 0.85,
         }
     }
 }
@@ -91,7 +91,7 @@ pub fn to_json(graph: &Graph, settings: &Settings) -> String {
 }
 
 /// Deserializes a graph and its settings (α and the Katz parameter are
-/// clamped to [0, 1]).
+/// clamped to [0 . . 1]).
 ///
 /// The graph gets a fresh generation. Fails on malformed JSON, unknown
 /// versions, and inconsistent graphs (see [`Graph`]).
@@ -105,8 +105,8 @@ pub fn from_json(json: impl AsRef<str>) -> anyhow::Result<(Graph, Settings)> {
     let graph = Graph::from_parts(file.directed, file.nodes, file.arcs, file.seed)?;
     let settings = Settings {
         centrality: file.centrality,
-        alpha: file.alpha.clamp(0.0, 1.0),
         katz: file.katz.clamp(0.0, 1.0),
+        alpha: file.alpha.clamp(0.0, 1.0),
     };
     Ok((graph, settings))
 }
@@ -156,8 +156,8 @@ mod tests {
     fn test_roundtrip_settings() -> anyhow::Result<()> {
         let s = Settings {
             centrality: Centrality::Katz,
-            alpha: 0.7,
             katz: 0.3,
+            alpha: 0.7,
         };
         let (_, t) = from_json(to_json(&Graph::new(true), &s))?;
         assert_eq!(t, s);
@@ -173,8 +173,8 @@ mod tests {
             s,
             Settings {
                 centrality: Centrality::PageRank,
+                katz: 0.85,
                 alpha: 0.6,
-                katz: 0.85
             }
         );
         Ok(())

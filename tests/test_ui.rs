@@ -382,12 +382,13 @@ fn test_render_zoomed_components() {
 fn test_centrality_shortcuts() {
     let (mut h, _, _) = two_node_app();
     let cmd_alt = egui::Modifiers::COMMAND | egui::Modifiers::ALT;
-    // Menu order: geometric, spectral (eigenvector), spectral (damped sum)
+    // Menu order: geometric, spectral (eigenvector), spectral (damped sum),
+    // unnormalized (adjacency matrix) before normalized (walk matrix)
     for (key, c) in [
-        (egui::Key::Num7, Centrality::Katz),
-        (egui::Key::Num6, Centrality::PageRank),
-        (egui::Key::Num5, Centrality::Eigenvector),
-        (egui::Key::Num4, Centrality::Seeley),
+        (egui::Key::Num7, Centrality::PageRank),
+        (egui::Key::Num6, Centrality::Katz),
+        (egui::Key::Num5, Centrality::Seeley),
+        (egui::Key::Num4, Centrality::Eigenvector),
     ] {
         h.key_press_modifiers(cmd_alt, key);
         h.run();
@@ -464,7 +465,7 @@ fn test_render_centralities() {
     for c in Centrality::ALL {
         h.state_mut().session_mut().set_centrality(c);
         h.run();
-        // The lowercase variant name, as in files: pagerank, katz, …
+        // The lowercase variant name, as in files: closeness, harmonic, …
         let name = format!("{c:?}").to_lowercase();
         h.render()
             .unwrap()

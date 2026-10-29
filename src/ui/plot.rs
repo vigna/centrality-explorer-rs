@@ -40,7 +40,7 @@ const EXPONENT_SCALE: f32 = 0.65;
 const Y_MARGIN: f64 = 0.05;
 
 /// Returns the smallest multiple of 0.1 that is at least `x`, clamped to
-/// [0.1, 1].
+/// [0.1 . . 1].
 pub fn nice_ceiling(x: f64) -> f64 {
     ((x * 10.0 - 1e-9).ceil() / 10.0).clamp(0.1, 1.0)
 }

@@ -332,7 +332,7 @@ impl App {
                 centrality = centrality_menu(ui, current);
             });
             ui.menu_button("View", |ui| {
-                ui.checkbox(&mut self.fixed_y, "Fixed y-axis [0, 1]");
+                ui.checkbox(&mut self.fixed_y, "Fixed y-axis [0..1]");
                 item(ui, "Full Screen", &FULLSCREEN, Command::Fullscreen);
                 ui.separator();
                 egui::gui_zoom::zoom_menu_buttons(ui);
@@ -424,7 +424,7 @@ fn centrality_menu(ui: &mut egui::Ui, current: Centrality) -> Option<Centrality>
         {
             clicked = Some(c);
         }
-        if matches!(c, Centrality::Betweenness | Centrality::Eigenvector) {
+        if matches!(c, Centrality::Betweenness | Centrality::Seeley) {
             ui.separator();
         }
     }
