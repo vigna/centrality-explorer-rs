@@ -4,12 +4,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
-use crate::files;
+use crate::files::{self, Settings};
 use crate::graph::{Graph, NodeId};
-use crate::rank::{Centrality, Ranking};
+use crate::rank::{Centrality, ITERATIONS, Ranking};
 
 /// An editing session: the current graph, its undo/redo history, its
-/// PageRank curves, and the curves from before the last edit.
+/// curves for the current centrality, and the curves from before the last
+/// edit.
 ///
 /// The session is the single source of truth of the application: every
 /// change is a new graph snapshot passed to [`commit`](Self::commit) (or
@@ -20,14 +21,27 @@ use crate::rank::{Centrality, Ranking};
 /// when the new graph has a different generation (a new, loaded, or random
 /// graph), there is no ghost; when it has the same generation but a different
 /// structure, the previous ranking becomes the ghost; otherwise (moves and
-/// renames) ranking and ghost are unchanged.
+/// renames) ranking and ghost are unchanged. The session keeps the graph from
+/// before the last structural edit, so that the ghost can be recomputed when
+/// the centrality changes.
+///
+/// Each centrality has its own parameter: the damping factor α for PageRank,
+/// the parameter βρ (or β) for Katz's index, and the iteration *k* for
+/// Seeley's index and eigenvector centrality. Switching centrality and
+/// changing parameters are neither undoable nor unsaved changes.
 #[derive(Debug)]
 pub struct Session {
     graph: Graph,
     ranking: Ranking,
     ghost: Option<Ranking>,
+    /// The graph before the last structural edit, if any; the ghost is its
+    /// ranking.
+    before: Option<Graph>,
     scores: Vec<f64>,
+    centrality: Centrality,
     alpha: f64,
+    katz: f64,
+    iteration: usize,
     undo: Vec<Graph>,
     redo: Vec<Graph>,
     drag_origin: Option<Graph>,
@@ -39,33 +53,36 @@ pub struct Session {
 }
 
 impl Session {
-    /// The default damping factor.
-    pub const DEFAULT_ALPHA: f64 = 0.85;
-
     /// Creates a session with an empty graph.
     pub fn new(directed: bool) -> Self {
-        Self::with_graph(Graph::new(directed), Self::DEFAULT_ALPHA, None)
+        Self::with_graph(Graph::new(directed), Settings::default(), None)
     }
 
-    /// Creates a session with the given graph, damping factor, and file
-    /// path, an empty history, and no unsaved changes.
-    pub fn with_graph(graph: Graph, alpha: f64, path: impl Into<Option<PathBuf>>) -> Self {
-        let ranking = Ranking::new(&graph, Centrality::PageRank);
-        let alpha = alpha.clamp(0.0, 1.0);
-        let scores = ranking.scores(alpha);
-        Self {
+    /// Creates a session with the given graph, settings, and file path, an
+    /// empty history, and no unsaved changes.
+    ///
+    /// The iteration starts at [`ITERATIONS`].
+    pub fn with_graph(graph: Graph, settings: Settings, path: impl Into<Option<PathBuf>>) -> Self {
+        let ranking = Ranking::new(&graph, settings.centrality);
+        let mut session = Self {
             path_generation: graph.generation(),
             graph,
             ranking,
             ghost: None,
-            scores,
-            alpha,
+            before: None,
+            scores: Vec::new(),
+            centrality: settings.centrality,
+            alpha: settings.alpha.clamp(0.0, 1.0),
+            katz: settings.katz.clamp(0.0, 1.0),
+            iteration: ITERATIONS,
             undo: Vec::new(),
             redo: Vec::new(),
             drag_origin: None,
             path: path.into(),
             dirty: false,
-        }
+        };
+        session.refresh_scores();
+        session
     }
 
     /// Returns the current graph.
@@ -83,10 +100,38 @@ impl Session {
         self.ghost.as_ref()
     }
 
-    /// Returns the exact PageRank at the current damping factor, aligned with
-    /// the identifiers of [`ranking`](Self::ranking).
+    /// Returns the scores of the current centrality at the current
+    /// parameter, aligned with the identifiers of [`ranking`](Self::ranking).
     pub fn scores(&self) -> &[f64] {
         &self.scores
+    }
+
+    /// Returns the settings to be saved with the graph.
+    pub fn settings(&self) -> Settings {
+        Settings {
+            centrality: self.centrality,
+            alpha: self.alpha,
+            katz: self.katz,
+        }
+    }
+
+    /// Returns the current centrality.
+    pub fn centrality(&self) -> Centrality {
+        self.centrality
+    }
+
+    /// Switches to another centrality, recomputing ranking, ghost (from the
+    /// graph before the last edit), and scores.
+    ///
+    /// This is neither undoable nor an unsaved change.
+    pub fn set_centrality(&mut self, c: Centrality) {
+        if c == self.centrality {
+            return;
+        }
+        self.centrality = c;
+        self.ranking = Ranking::new(&self.graph, c);
+        self.ghost = self.before.as_ref().map(|g| Ranking::new(g, c));
+        self.refresh_scores();
     }
 
     /// Returns the current damping factor.
@@ -101,7 +146,65 @@ impl Session {
         let alpha = alpha.clamp(0.0, 1.0);
         if alpha != self.alpha {
             self.alpha = alpha;
-            self.scores = self.ranking.scores(alpha);
+            if self.centrality == Centrality::PageRank {
+                self.refresh_scores();
+            }
+        }
+    }
+
+    /// Returns the current Katz parameter βρ (or β).
+    pub fn katz(&self) -> f64 {
+        self.katz
+    }
+
+    /// Returns the current iteration *k* of Seeley's index and eigenvector
+    /// centrality.
+    pub fn iteration(&self) -> usize {
+        self.iteration
+    }
+
+    /// Returns the parameter of the current centrality: α for PageRank, βρ
+    /// (or β) for Katz's index, *k* for Seeley's index and eigenvector
+    /// centrality, and `None` for the others.
+    pub fn param(&self) -> Option<f64> {
+        match self.centrality {
+            Centrality::PageRank => Some(self.alpha),
+            Centrality::Katz => Some(self.katz),
+            Centrality::Seeley | Centrality::Eigenvector => Some(self.iteration as f64),
+            _ => None,
+        }
+    }
+
+    /// Sets the parameter of the current centrality.
+    ///
+    /// α and the Katz parameter are clamped to [0, 1]; *k* is rounded and
+    /// clamped to 0..=[`ITERATIONS`]. Does nothing for centralities without
+    /// parameter. This is neither undoable nor an unsaved change.
+    pub fn set_param(&mut self, x: f64) {
+        let old = self.param();
+        match self.centrality {
+            Centrality::PageRank => self.alpha = x.clamp(0.0, 1.0),
+            Centrality::Katz => self.katz = x.clamp(0.0, 1.0),
+            Centrality::Seeley | Centrality::Eigenvector => {
+                self.iteration = x.round().clamp(0.0, ITERATIONS as f64) as usize;
+            }
+            _ => return,
+        }
+        if self.param() != old {
+            self.refresh_scores();
+        }
+    }
+
+    /// Moves the parameter of the current centrality by a number of steps:
+    /// 0.01 for α and the Katz parameter, 1 for *k*.
+    pub fn step_param(&mut self, steps: i32) {
+        if let Some(v) = self.param() {
+            self.set_param(match self.centrality {
+                Centrality::PageRank | Centrality::Katz => {
+                    ((v * 100.0).round() + f64::from(steps)) / 100.0
+                }
+                _ => v + f64::from(steps),
+            });
         }
     }
 
@@ -193,8 +296,8 @@ impl Session {
     /// Creates a session from a file, with an empty history.
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path = path.as_ref();
-        let (graph, alpha) = files::load(path)?;
-        Ok(Self::with_graph(graph, alpha, path.to_path_buf()))
+        let (graph, settings) = files::load(path)?;
+        Ok(Self::with_graph(graph, settings, path.to_path_buf()))
     }
 
     /// Saves the session to its file.
@@ -209,7 +312,7 @@ impl Session {
     /// Saves the session to a file, which becomes the session's file.
     pub fn save_as(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let path = path.as_ref();
-        files::save(&self.graph, self.alpha, path)?;
+        files::save(&self.graph, &self.settings(), path)?;
         self.mark_saved(path.to_path_buf());
         Ok(())
     }
@@ -221,19 +324,25 @@ impl Session {
         self.dirty = false;
     }
 
+    /// Recomputes the scores from the ranking and the current parameter.
+    fn refresh_scores(&mut self) {
+        self.scores = self.ranking.scores(self.param().unwrap_or(0.0));
+    }
+
     /// Makes a graph current, updating ranking and ghost (see the
     /// documentation of [`Session`]).
     fn install(&mut self, new: Graph) {
         if new.generation() != self.graph.generation() {
-            self.ranking = Ranking::new(&new, Centrality::PageRank);
+            self.ranking = Ranking::new(&new, self.centrality);
             self.ghost = None;
-            self.scores = self.ranking.scores(self.alpha);
+            self.before = None;
         } else if !new.same_structure(&self.graph) {
-            let ranking = Ranking::new(&new, Centrality::PageRank);
+            let ranking = Ranking::new(&new, self.centrality);
             self.ghost = Some(std::mem::replace(&mut self.ranking, ranking));
-            self.scores = self.ranking.scores(self.alpha);
+            self.before = Some(self.graph.clone());
         }
         self.graph = new;
+        self.refresh_scores();
     }
 }
 
@@ -341,6 +450,97 @@ mod tests {
         assert_eq!(s.graph().node(a).unwrap().pos, [30.0, 0.0]);
         assert!(s.undo());
         assert_eq!(s.graph().node(a).unwrap().pos, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_ghost_survives_switch() {
+        let (mut s, a, b) = two_nodes();
+        s.commit(with_arc(&s, a, b));
+        s.set_centrality(Centrality::Katz);
+        let expected = Ranking::new(
+            &{
+                let mut g = s.graph().clone();
+                g.toggle_arc(a, b);
+                g
+            },
+            Centrality::Katz,
+        );
+        assert_eq!(
+            s.ghost().unwrap().curve(a).unwrap(),
+            expected.curve(a).unwrap()
+        );
+        assert_eq!(s.ranking().centrality, Centrality::Katz);
+        assert!(!s.can_redo());
+    }
+
+    #[test]
+    fn test_ghost_with_deleted_node_survives_switch() {
+        let (mut s, a, _) = two_nodes();
+        let mut g = s.graph().clone();
+        g.remove_node(a);
+        s.commit(g);
+        s.set_centrality(Centrality::Harmonic);
+        assert!(s.ranking().curve(a).is_none());
+        assert!(s.ghost().unwrap().curve(a).is_some());
+    }
+
+    #[test]
+    fn test_no_ghost_after_switch_on_new_graph() {
+        let mut s = Session::new(true);
+        s.set_centrality(Centrality::Seeley);
+        assert!(s.ghost().is_none());
+    }
+
+    #[test]
+    fn test_params_per_centrality() {
+        let (mut s, _, _) = two_nodes();
+        s.mark_saved("x.json".into());
+        s.set_param(0.5);
+        assert_eq!(s.alpha(), 0.5);
+        s.set_centrality(Centrality::Katz);
+        assert_eq!(s.param(), Some(0.85));
+        s.step_param(-5);
+        assert!((s.katz() - 0.8).abs() < 1e-12);
+        s.set_centrality(Centrality::Eigenvector);
+        assert_eq!(s.param(), Some(ITERATIONS as f64));
+        s.step_param(-1);
+        assert_eq!(s.iteration(), ITERATIONS - 1);
+        s.set_param(1e9);
+        assert_eq!(s.iteration(), ITERATIONS);
+        s.set_centrality(Centrality::Closeness);
+        assert_eq!(s.param(), None);
+        s.step_param(3); // no effect
+        s.set_centrality(Centrality::PageRank);
+        assert_eq!(s.alpha(), 0.5);
+        assert!(!s.is_dirty());
+    }
+
+    #[test]
+    fn test_scores_follow_param() {
+        let (mut s, a, b) = two_nodes();
+        s.commit(with_arc(&s, a, b));
+        s.set_centrality(Centrality::Eigenvector);
+        s.set_param(3.0);
+        assert_eq!(s.scores(), &s.ranking().scores(3.0)[..]);
+    }
+
+    #[test]
+    fn test_save_open_keeps_settings() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("s.json");
+        let (mut s, _, _) = two_nodes();
+        s.set_centrality(Centrality::Katz);
+        s.set_param(0.4);
+        s.save_as(&path)?;
+        let mut t = Session::open(&path)?;
+        assert_eq!(t.settings(), s.settings());
+        t.set_centrality(Centrality::Seeley);
+        t.step_param(-2);
+        t.save_as(&path)?;
+        let u = Session::open(&path)?;
+        assert_eq!(u.centrality(), Centrality::Seeley);
+        assert_eq!(u.iteration(), ITERATIONS);
+        Ok(())
     }
 
     #[test]
