@@ -276,7 +276,7 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         .enumerate()
         .map(|(i, node)| (node.id, i))
         .collect();
-    for component in &app.session.ranking().sinks {
+    for component in &app.session.ranking().hulls {
         let members: Vec<usize> = component
             .iter()
             .filter_map(|id| index.get(id).copied())

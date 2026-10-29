@@ -69,7 +69,7 @@ pub fn nearest_curve(ranking: &Ranking, alpha: f64, y: f64, tol: f64) -> Option<
         .curves
         .iter()
         .enumerate()
-        .map(|(i, curve)| (i, (value_at(&ranking.alphas, curve, alpha) - y).abs()))
+        .map(|(i, curve)| (i, (value_at(&ranking.xs, curve, alpha) - y).abs()))
         .filter(|&(_, d)| d <= tol)
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(i, _)| i)
@@ -115,7 +115,7 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
     let scores = session.scores();
     let points = |curve: &[f64]| -> PlotPoints<'_> {
         ranking
-            .alphas
+            .xs
             .iter()
             .zip(curve)
             .map(|(&a, &v)| [a, v])
@@ -255,6 +255,7 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
 mod tests {
     use super::*;
     use crate::graph::Graph;
+    use crate::rank::Centrality;
 
     #[test]
     fn test_nice_ceiling() {
@@ -280,7 +281,7 @@ mod tests {
         for (s, t) in [(0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 3)] {
             g.add_arc(ids[s], ids[t]);
         }
-        let r = Ranking::new(&g);
+        let r = Ranking::new(&g, Centrality::PageRank);
         assert_eq!(nearest_curve(&r, 1.0, 0.0, 0.01).map(|i| i < 3), Some(true));
         assert_eq!(nearest_curve(&r, 0.85, 0.9, 0.05), None);
     }

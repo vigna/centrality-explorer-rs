@@ -6,7 +6,7 @@ use anyhow::Context;
 
 use crate::files;
 use crate::graph::{Graph, NodeId};
-use crate::rank::Ranking;
+use crate::rank::{Centrality, Ranking};
 
 /// An editing session: the current graph, its undo/redo history, its
 /// PageRank curves, and the curves from before the last edit.
@@ -50,7 +50,7 @@ impl Session {
     /// Creates a session with the given graph, damping factor, and file
     /// path, an empty history, and no unsaved changes.
     pub fn with_graph(graph: Graph, alpha: f64, path: impl Into<Option<PathBuf>>) -> Self {
-        let ranking = Ranking::new(&graph);
+        let ranking = Ranking::new(&graph, Centrality::PageRank);
         let alpha = alpha.clamp(0.0, 1.0);
         let scores = ranking.scores(alpha);
         Self {
@@ -225,11 +225,11 @@ impl Session {
     /// documentation of [`Session`]).
     fn install(&mut self, new: Graph) {
         if new.generation() != self.graph.generation() {
-            self.ranking = Ranking::new(&new);
+            self.ranking = Ranking::new(&new, Centrality::PageRank);
             self.ghost = None;
             self.scores = self.ranking.scores(self.alpha);
         } else if !new.same_structure(&self.graph) {
-            let ranking = Ranking::new(&new);
+            let ranking = Ranking::new(&new, Centrality::PageRank);
             self.ghost = Some(std::mem::replace(&mut self.ranking, ranking));
             self.scores = self.ranking.scores(self.alpha);
         }
