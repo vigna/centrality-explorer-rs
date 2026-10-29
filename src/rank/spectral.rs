@@ -410,6 +410,29 @@ mod tests {
         succ_of(5, &[(0, 0), (0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 3)])
     }
 
+    /// Two triangles with a self-loop, both basic (ρ is the real root of
+    /// λ³ = λ² + 1), fed by a source, which also points, as the first
+    /// triangle does, to a dangling node.
+    fn asymmetric() -> Vec<Vec<usize>> {
+        succ_of(
+            8,
+            &[
+                (0, 0),
+                (0, 1),
+                (1, 2),
+                (2, 0),
+                (3, 3),
+                (3, 4),
+                (4, 5),
+                (5, 3),
+                (6, 1),
+                (6, 5),
+                (2, 7),
+                (6, 7),
+            ],
+        )
+    }
+
     #[test]
     fn test_rho() {
         assert_eq!(Spectrum::new(&[vec![1], vec![2], vec![]]).rho(), 0.0); // DAG
@@ -457,11 +480,38 @@ mod tests {
             &[0.0, 0.0, 0.5, 0.5],
             1e-12,
         );
+        // The scale of the basic classes, the inflow of the source into
+        // them (H = 0), and the dangling node, whose predecessors have
+        // different h (from a numpy oracle)
+        let s = Spectrum::new(&asymmetric());
+        assert!((s.rho() - 1.4655712318767686).abs() < 1e-12);
+        assert_close(
+            &s.katz_limit(),
+            &[
+                0.210867543347443,
+                0.14388078775087,
+                0.098173861919097,
+                0.223516582206801,
+                0.152511578656311,
+                0.104062890522905,
+                0.0,
+                0.066986755596573,
+            ],
+            1e-12,
+        );
     }
 
     #[test]
     fn test_katz_limit_matches_near_limit() {
-        for succ in [chained(), parallel(), periodic(), self_loops(), triangle()] {
+        for succ in [
+            chained(),
+            parallel(),
+            periodic(),
+            self_loops(),
+            triangle(),
+            asymmetric(),
+            golden(),
+        ] {
             let s = Spectrum::new(&succ);
             assert_close(&s.katz_limit(), &katz(&succ, (1.0 - 1e-6) / s.rho()), 1e-5);
         }
