@@ -4,9 +4,11 @@
 //! in which dangling nodes jump uniformly to every node; the preference
 //! vector is uniform.
 
+mod geometric;
 mod lu;
 mod scc;
 
+pub use geometric::{betweenness, closeness, harmonic};
 pub use scc::{sccs, terminal_sccs};
 
 use crate::graph::{Graph, NodeId};
