@@ -42,6 +42,62 @@ impl Animation {
     }
 }
 
+/// The mapping from stored node positions to canvas-local positions.
+///
+/// When every node is visible, stored positions are used as they are.
+/// Otherwise (e.g., after zooming in, shrinking the window, or opening a file
+/// saved on a larger screen) the drawing is scaled down, never up, and
+/// translated so that all nodes fit within the layout margins. Stored
+/// positions never change, so nodes do not move on their own.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct View {
+    scale: f32,
+    offset: [f32; 2],
+}
+
+impl View {
+    const IDENTITY: Self = Self {
+        scale: 1.0,
+        offset: [0.0, 0.0],
+    };
+
+    /// Returns the view showing the given stored positions on a canvas of the
+    /// given size.
+    pub(crate) fn fit(stored: &[[f32; 2]], size: Vec2) -> Self {
+        let visible = stored
+            .iter()
+            .all(|&[x, y]| (0.0..=size.x).contains(&x) && (0.0..=size.y).contains(&y));
+        if visible {
+            return Self::IDENTITY;
+        }
+        let (mut min, mut max) = ([f32::MAX; 2], [f32::MIN; 2]);
+        for p in stored {
+            for c in 0..2 {
+                min[c] = min[c].min(p[c]);
+                max[c] = max[c].max(p[c]);
+            }
+        }
+        let size = [size.x, size.y];
+        let scale = (0..2)
+            .filter(|&c| max[c] > min[c])
+            .map(|c| (size[c] - 2.0 * layouts::MARGIN).max(0.0) / (max[c] - min[c]))
+            .fold(1.0, f32::min)
+            .max(1e-3);
+        let offset = [0, 1].map(|c| size[c] / 2.0 - scale * (min[c] + max[c]) / 2.0);
+        Self { scale, offset }
+    }
+
+    /// Maps a stored position to a canvas-local position.
+    pub(crate) fn to_canvas(self, p: [f32; 2]) -> [f32; 2] {
+        [0, 1].map(|c| self.offset[c] + self.scale * p[c])
+    }
+
+    /// Maps a canvas-local position to a stored position.
+    pub(crate) fn to_stored(self, p: [f32; 2]) -> [f32; 2] {
+        [0, 1].map(|c| (p[c] - self.offset[c]) / self.scale)
+    }
+}
+
 /// An arc as drawn.
 struct DrawnArc {
     from: NodeId,
@@ -79,8 +135,20 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         app.animation = None;
     }
 
-    // Positions as displayed, possibly mid-animation.
+    // Positions as displayed, possibly mid-animation. The view is frozen
+    // during a drag, so that it does not change under the pointer.
     let graph = app.session.graph();
+    let view = match app.dragging {
+        Some((_, _, view)) => view,
+        None => {
+            let stored: Vec<[f32; 2]> = graph.nodes().iter().map(|node| node.pos).collect();
+            View::fit(&stored, rect.size())
+        }
+    };
+    let to_screen = |p: [f32; 2]| {
+        let [x, y] = view.to_canvas(p);
+        pos2(x, y) + origin
+    };
     let t = app
         .animation
         .as_ref()
@@ -90,13 +158,13 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         .nodes()
         .iter()
         .map(|node| {
-            let target = pos2(node.pos[0], node.pos[1]) + origin;
+            let target = to_screen(node.pos);
             match (t, &app.animation) {
                 (Some(t), Some(animation)) => {
                     let from = animation
                         .from
                         .get(&node.id)
-                        .map_or(center, |p| pos2(p[0], p[1]) + origin);
+                        .map_or(center, |&p| to_screen(p));
                     from.lerp(target, t)
                 }
                 _ => target,
@@ -132,7 +200,7 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
             .rev()
             .find(|&i| p.distance(positions[i]) <= radii[i] + NODE_SLACK)
     };
-    let hit_arc = |p: Pos2| arcs.iter().position(|arc| arc.distance(p) <= ARC_SLACK);
+    let hit_arc = |p: Pos2| nearest_arc(&arcs, p);
     let target_at = |p: Pos2| match hit_node(p) {
         Some(i) => Target::Node(ids[i]),
         None => match hit_arc(p) {
@@ -155,15 +223,15 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
     // Interaction.
     let mut new_graph = None;
     let mut command = None;
-    let local = |p: Pos2| [p.x - origin.x, p.y - origin.y];
+    let local = |p: Pos2| view.to_stored([p.x - origin.x, p.y - origin.y]);
     if response.drag_started_by(egui::PointerButton::Primary)
         && let Some(press) = ui.input(|i| i.pointer.press_origin())
         && let Some(i) = hit_node(press)
     {
-        app.dragging = Some((ids[i], press - positions[i]));
+        app.dragging = Some((ids[i], press - positions[i], view));
         app.session.begin_drag();
     }
-    if let Some((id, offset)) = app.dragging {
+    if let Some((id, offset, _)) = app.dragging {
         if response.dragged()
             && let Some(p) = response.interact_pointer_pos()
         {
@@ -266,7 +334,12 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         let (p, r) = (positions[i], radii[i]);
         let fill = palette::color(node.color);
         painter.circle_filled(p, r, fill);
-        let outline = if hovered_node == Some(i) { 3.5 } else { 2.0 };
+        // The node may be hovered on the canvas or through its curve.
+        let outline = if app.hovered == Some(node.id) {
+            3.5
+        } else {
+            2.0
+        };
         if app.session.ranking().dangling.contains(&node.id) {
             let mut circle: Vec<Pos2> = (0..=40)
                 .map(|k| p + Vec2::angled(std::f32::consts::TAU * k as f32 / 40.0) * r)
@@ -414,6 +487,17 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
     }
 }
 
+/// Returns the index of the arc nearest to a point, if within the
+/// tolerance.
+fn nearest_arc(arcs: &[DrawnArc], p: Pos2) -> Option<usize> {
+    arcs.iter()
+        .enumerate()
+        .map(|(a, arc)| (a, arc.distance(p)))
+        .filter(|&(_, d)| d <= ARC_SLACK)
+        .min_by(|x, y| x.1.total_cmp(&y.1))
+        .map(|(a, _)| a)
+}
+
 /// Returns the arcs as drawn: opposite arcs side by side, self-loops above
 /// their node, and one undirected edge per pair of opposite arcs.
 fn drawn_arcs(app: &App, positions: &[Pos2], radii: &[f32]) -> Vec<DrawnArc> {
@@ -517,4 +601,58 @@ fn edit_keys(ui: &egui::Ui) -> Vec<EditKey> {
         }
         keys
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_view_identity_when_visible() {
+        let view = View::fit(&[[10.0, 10.0], [600.0, 500.0]], vec2(640.0, 640.0));
+        assert_eq!(view.to_canvas([600.0, 500.0]), [600.0, 500.0]);
+        assert_eq!(view.to_stored([10.0, 10.0]), [10.0, 10.0]);
+    }
+
+    #[test]
+    fn test_view_fits_invisible_nodes() {
+        let stored = [[2000.0, 300.0], [100.0, 100.0], [-50.0, 900.0]];
+        let size = vec2(640.0, 480.0);
+        let view = View::fit(&stored, size);
+        for &p in &stored {
+            let [x, y] = view.to_canvas(p);
+            assert!(
+                (layouts::MARGIN..=size.x - layouts::MARGIN).contains(&x),
+                "{x}"
+            );
+            assert!(
+                (layouts::MARGIN..=size.y - layouts::MARGIN).contains(&y),
+                "{y}"
+            );
+            let back = view.to_stored([x, y]);
+            assert!((back[0] - p[0]).abs() < 1e-2 && (back[1] - p[1]).abs() < 1e-2);
+        }
+    }
+
+    #[test]
+    fn test_nearest_arc() {
+        let (a, b) = (NodeId(0), NodeId(1));
+        let segment = |from, to, start: Pos2, end: Pos2| DrawnArc {
+            from,
+            to,
+            shape: ArcShape::Segment {
+                start,
+                end,
+                arrow: true,
+            },
+        };
+        let arcs = [
+            segment(a, b, pos2(0.0, -6.0), pos2(100.0, -6.0)),
+            segment(b, a, pos2(100.0, 6.0), pos2(0.0, 6.0)),
+        ];
+        // Within the tolerance of both, but nearer to the second.
+        assert_eq!(nearest_arc(&arcs, pos2(50.0, 1.0)), Some(1));
+        assert_eq!(nearest_arc(&arcs, pos2(50.0, -2.0)), Some(0));
+        assert_eq!(nearest_arc(&arcs, pos2(50.0, 40.0)), None);
+    }
 }

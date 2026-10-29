@@ -32,6 +32,9 @@ pub struct Session {
     redo: Vec<Graph>,
     drag_origin: Option<Graph>,
     path: Option<PathBuf>,
+    /// The generation of the graph associated with `path`: other
+    /// generations (new or random graphs) are not associated with the file.
+    path_generation: u64,
     dirty: bool,
 }
 
@@ -51,6 +54,7 @@ impl Session {
         let alpha = alpha.clamp(0.0, 1.0);
         let scores = ranking.scores(alpha);
         Self {
+            path_generation: graph.generation(),
             graph,
             ranking,
             ghost: None,
@@ -101,9 +105,16 @@ impl Session {
         }
     }
 
-    /// Returns the file associated with the session, if any.
+    /// Returns the file associated with the current graph, if any.
+    ///
+    /// The association holds only for the generation of graph that was
+    /// opened or saved: after a new or random graph replaces it, there is no
+    /// file until the next save (undoing back to it restores the
+    /// association).
     pub fn path(&self) -> Option<&Path> {
-        self.path.as_deref()
+        self.path
+            .as_deref()
+            .filter(|_| self.graph.generation() == self.path_generation)
     }
 
     /// Returns whether there are unsaved changes.
@@ -189,9 +200,9 @@ impl Session {
     /// Saves the session to its file.
     pub fn save(&mut self) -> anyhow::Result<()> {
         let path = self
-            .path
-            .clone()
-            .context("the session is not associated with a file")?;
+            .path()
+            .context("the graph is not associated with a file")?
+            .to_path_buf();
         self.save_as(path)
     }
 
@@ -206,6 +217,7 @@ impl Session {
     /// Associates the session with a file and marks it as saved.
     pub fn mark_saved(&mut self, path: PathBuf) {
         self.path = Some(path);
+        self.path_generation = self.graph.generation();
         self.dirty = false;
     }
 
@@ -340,6 +352,21 @@ mod tests {
         assert!((s.scores().iter().sum::<f64>() - 1.0).abs() < 1e-12);
         s.set_alpha(7.0);
         assert_eq!(s.alpha(), 1.0);
+    }
+
+    #[test]
+    fn test_path_follows_generation() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("lecture.json");
+        let (mut s, _, _) = two_nodes();
+        s.save_as(&path)?;
+        s.commit(Graph::new(true));
+        assert_eq!(s.path(), None);
+        assert!(s.save().is_err());
+        assert_eq!(crate::files::load(&path)?.0.len(), 2);
+        s.undo();
+        assert_eq!(s.path(), Some(path.as_path()));
+        Ok(())
     }
 
     #[test]

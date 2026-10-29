@@ -88,6 +88,15 @@ impl App {
         });
     }
 
+    /// Quits, asking for confirmation if there are unsaved changes.
+    pub(crate) fn quit(&mut self, ctx: &egui::Context) {
+        if self.session.is_dirty() {
+            self.dialogs.confirm = Some(Pending::Close);
+        } else {
+            ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+    }
+
     /// Opens a file, asking for confirmation if there are unsaved changes.
     pub(crate) fn open(&mut self) {
         if self.session.is_dirty() {

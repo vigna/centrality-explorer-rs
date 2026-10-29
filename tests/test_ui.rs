@@ -234,3 +234,107 @@ fn test_render_random() {
         .save("target/screenshots/random.png")
         .unwrap();
 }
+
+#[test]
+fn test_quit_asks_about_unsaved_changes() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness();
+    h.run();
+    let mut g = h.state().session().graph().clone();
+    g.add_node([100.0, 100.0]);
+    h.state_mut().session_mut().commit(g);
+    h.run();
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Q);
+    h.run();
+    assert!(h.query_by_label("Unsaved Changes").is_some());
+}
+
+/// Builds the lecture example (after closing {d, e}) in a light-theme
+/// harness rendering with wgpu.
+fn lecture_harness() -> (Harness<'static, App>, Vec<NodeId>) {
+    let mut h = Harness::builder()
+        .with_size([1280.0, 720.0])
+        .with_theme(egui::Theme::Light)
+        .wgpu()
+        .build_eframe(|cc| App::new(cc));
+    h.run();
+    let mut g = h.state().session().graph().clone();
+    let pos = [
+        [120.0, 200.0],
+        [260.0, 110.0],
+        [240.0, 330.0],
+        [380.0, 460.0],
+        [500.0, 330.0],
+    ];
+    let ids: Vec<_> = pos.iter().map(|&p| g.add_node(p)).collect();
+    for (s, t) in [(0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 3)] {
+        g.add_arc(ids[s], ids[t]);
+    }
+    h.state_mut().session_mut().commit(g);
+    h.run();
+    (h, ids)
+}
+
+/// Mean luminance of the pixels on a circle.
+fn ring_luminance(img: &image::RgbaImage, center: egui::Pos2, radius: f32) -> f32 {
+    let samples = 16;
+    (0..samples)
+        .map(|k| {
+            let angle = std::f32::consts::TAU * k as f32 / samples as f32;
+            let p = center + egui::Vec2::angled(angle) * radius;
+            let px = img.get_pixel(p.x.round() as u32, p.y.round() as u32);
+            0.2126 * px[0] as f32 + 0.7152 * px[1] as f32 + 0.0722 * px[2] as f32
+        })
+        .sum::<f32>()
+        / samples as f32
+}
+
+/// Hovering a curve in the plot highlights its node on the canvas (the node
+/// outline thickens).
+#[test]
+#[ignore = "needs a GPU"]
+fn test_curve_hover_highlights_node() {
+    let (mut h, _) = lecture_harness();
+    // Pointer on an empty part of the plot.
+    h.hover_at(egui::pos2(900.0, 80.0));
+    h.run();
+    let plain = h.render().unwrap();
+    // Find a pixel of curve a (blue) in the plot, away from the α line.
+    let blue = image::Rgba([0x1f, 0x77, 0xb4, 0xff]);
+    let (x, y) = (720..1100)
+        .flat_map(|x| (40..640).map(move |y| (x, y)))
+        .find(|&(x, y)| *plain.get_pixel(x, y) == blue)
+        .expect("curve a is visible");
+    h.hover_at(egui::pos2(x as f32, y as f32));
+    h.run();
+    let hovered = h.render().unwrap();
+    // Node a: score 0.0773 with 5 nodes gives radius 14.92; the normal
+    // outline ends at 15.92, the highlighted one at 16.67.
+    let center = h.state().canvas_rect().min + egui::vec2(120.0, 200.0);
+    let (before, after) = (
+        ring_luminance(&plain, center, 16.4),
+        ring_luminance(&hovered, center, 16.4),
+    );
+    assert!(after < before - 40.0, "before {before}, after {after}");
+}
+
+/// Renders the lecture example in the components layout, laid out at zoom 1
+/// and then shown at zoom 1.5, offscreen to `target/screenshots/` for visual
+/// inspection. Run with `cargo test --test test_ui -- --ignored`.
+#[test]
+#[ignore = "needs a GPU"]
+fn test_render_zoomed_components() {
+    let (mut h, _) = lecture_harness();
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num3);
+    for _ in 0..90 {
+        h.step();
+    }
+    h.run();
+    h.ctx.set_zoom_factor(1.5);
+    h.run();
+    std::fs::create_dir_all("target/screenshots").unwrap();
+    h.render()
+        .unwrap()
+        .save("target/screenshots/zoomed_components.png")
+        .unwrap();
+}

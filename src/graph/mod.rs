@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 /// The number of distinct node colors.
 pub const PALETTE_SIZE: usize = 12;
 
+/// The largest absolute value of a node coordinate accepted from a file.
+pub const MAX_COORDINATE: f32 = 1e6;
+
 /// The source of fresh graph generations.
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(0);
 
@@ -82,8 +85,9 @@ impl Graph {
 
     /// Creates a graph from its parts, with a fresh generation.
     ///
-    /// Fails on duplicate node identifiers, arcs with unknown endpoints, and
-    /// colors not smaller than [`PALETTE_SIZE`]. Duplicate arcs are merged
+    /// Fails on duplicate node identifiers, arcs with unknown endpoints,
+    /// colors not smaller than [`PALETTE_SIZE`], and coordinates that are
+    /// not finite or exceed [`MAX_COORDINATE`] in absolute value. Duplicate arcs are merged
     /// and, for undirected graphs, missing reverse arcs are added.
     pub(crate) fn from_parts(
         directed: bool,
@@ -94,6 +98,12 @@ impl Graph {
         let mut ids = HashSet::new();
         for node in &nodes {
             ensure!(ids.insert(node.id), "duplicate node id {}", node.id.0);
+            ensure!(
+                node.pos.iter().all(|c| c.abs() <= MAX_COORDINATE),
+                "node {} has an invalid position {:?}",
+                node.id.0,
+                node.pos
+            );
             ensure!(
                 node.color < PALETTE_SIZE,
                 "node {} has color {} (must be smaller than {PALETTE_SIZE})",

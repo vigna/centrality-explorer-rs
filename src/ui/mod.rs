@@ -34,6 +34,7 @@ type Layout = fn(&Graph, [f32; 2]) -> Vec<[f32; 2]>;
 const NEW: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
 const OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::O);
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
+const QUIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Q);
 const SAVE_AS: KeyboardShortcut =
     KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::S);
 const UNDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
@@ -53,6 +54,7 @@ enum Command {
     Open,
     Save,
     SaveAs,
+    Quit,
     Undo,
     Redo,
     Random,
@@ -62,13 +64,14 @@ enum Command {
 
 /// Shortcuts and their commands, shifted variants first (shortcuts match
 /// modifiers logically, so Cmd-Z would also match Cmd-Shift-Z).
-const SHORTCUTS: [(KeyboardShortcut, Command); 11] = [
+const SHORTCUTS: [(KeyboardShortcut, Command); 12] = [
     (SAVE_AS, Command::SaveAs),
     (REDO, Command::Redo),
     (FULLSCREEN, Command::Fullscreen),
     (NEW, Command::New),
     (OPEN, Command::Open),
     (SAVE, Command::Save),
+    (QUIT, Command::Quit),
     (UNDO, Command::Undo),
     (RANDOM, Command::Random),
     (FORCE, Command::Layout(layouts::force)),
@@ -82,6 +85,14 @@ pub fn run() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 720.0])
             .with_title(NAME),
+        // The default macOS menu quits on Cmd-Q without a close request,
+        // bypassing the unsaved-changes confirmation; Cmd-Q is handled as a
+        // shortcut instead.
+        #[cfg(target_os = "macos")]
+        event_loop_builder: Some(Box::new(|builder| {
+            use winit::platform::macos::EventLoopBuilderExtMacOS;
+            builder.with_default_menu(false);
+        })),
         ..Default::default()
     };
     eframe::run_native(NAME, options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
@@ -97,8 +108,8 @@ pub struct App {
     /// Whether the canvas or the plot handled the pointer this frame.
     hover_seen: bool,
     /// The node being dragged, with the offset of the pointer from its
-    /// center.
-    dragging: Option<(NodeId, egui::Vec2)>,
+    /// center and the view frozen for the drag.
+    dragging: Option<(NodeId, egui::Vec2, canvas::View)>,
     /// The target and canvas-local position of the last right click.
     context: Option<(Target, [f32; 2])>,
     animation: Option<Animation>,
@@ -210,6 +221,7 @@ impl App {
             Command::SaveAs => {
                 self.save_as();
             }
+            Command::Quit => self.quit(ctx),
             Command::Random => self.open_random_dialog(),
         }
     }
@@ -260,6 +272,8 @@ impl App {
                 item(ui, "Open…", &OPEN, Command::Open);
                 item(ui, "Save", &SAVE, Command::Save);
                 item(ui, "Save As…", &SAVE_AS, Command::SaveAs);
+                ui.separator();
+                item(ui, "Quit", &QUIT, Command::Quit);
             });
             ui.menu_button("Edit", |ui| {
                 item(ui, "Undo", &UNDO, Command::Undo);

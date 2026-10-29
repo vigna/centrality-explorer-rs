@@ -133,6 +133,17 @@ mod tests {
     }
 
     #[test]
+    fn test_load_rejects_bad_positions() {
+        for pos in ["[1e39,0]", "[0,-1e39]", "[1e9,0]"] {
+            let json = format!(
+                r#"{{"version":1,"directed":true,"alpha":0.85,"seed":null,
+                "nodes":[{{"id":0,"label":"a","pos":{pos},"color":0}}],"arcs":[]}}"#
+            );
+            assert!(from_json(json).is_err(), "{pos}");
+        }
+    }
+
+    #[test]
     fn test_load_rejects_malformed_json() {
         assert!(from_json("{ not json").is_err());
         assert!(from_json(r#"{"version":1}"#).is_err());

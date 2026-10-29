@@ -5,13 +5,17 @@
 //! of a canvas of the given size. Layouts are deterministic.
 
 use std::collections::BTreeSet;
-use std::f32::consts::{FRAC_PI_2, TAU};
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use crate::graph::Graph;
 use crate::rank::{Chain, sccs, terminal_components};
 
 /// The minimum distance between a node center and the canvas border.
 pub const MARGIN: f32 = 60.0;
+
+/// The minimum distance between node centers in the components layout,
+/// before fitting to the canvas.
+const NODE_SPACING: f32 = 120.0;
 
 /// The number of iterations of the force-directed layout.
 const FORCE_ITERATIONS: usize = 300;
@@ -166,36 +170,37 @@ pub fn components(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
     for c in 0..comps.len() {
         by_column[col[c]].push(c);
     }
+    // Lay out in abstract units, with node centers at least NODE_SPACING
+    // apart, then fit to the canvas.
     let radius = |c: usize| {
-        if comps[c].len() == 1 {
+        let k = comps[c].len();
+        if k == 1 {
             0.0
         } else {
-            25.0 * (comps[c].len() as f32).sqrt()
+            NODE_SPACING / (2.0 * (PI / k as f32).sin())
         }
     };
-    const GAP: f32 = 50.0;
     let mut pos = vec![[0.0f32; 2]; n];
-    for (j, column) in by_column.iter_mut().enumerate() {
+    let mut x = 0.0;
+    for column in by_column.iter_mut() {
         column.sort_unstable_by_key(|&c| comps[c][0]);
-        let x = if columns == 1 {
-            size[0] / 2.0
-        } else {
-            MARGIN + j as f32 * (size[0] - 2.0 * MARGIN) / (columns - 1) as f32
-        };
+        let width = column.iter().map(|&c| 2.0 * radius(c)).fold(0.0, f32::max);
+        let cx = x + width / 2.0;
         let height: f32 = column.iter().map(|&c| 2.0 * radius(c)).sum::<f32>()
-            + GAP * (column.len() as f32 - 1.0);
-        let mut y = size[1] / 2.0 - height / 2.0;
+            + NODE_SPACING * (column.len() as f32 - 1.0);
+        let mut y = -height / 2.0;
         for &c in column.iter() {
             let r = radius(c);
             let k = comps[c].len();
             for (i, &v) in comps[c].iter().enumerate() {
                 let angle = -FRAC_PI_2 + TAU * i as f32 / k as f32;
-                pos[v] = [x + r * angle.cos(), y + r + r * angle.sin()];
+                pos[v] = [cx + r * angle.cos(), y + r + r * angle.sin()];
             }
-            y += 2.0 * r + GAP;
+            y += 2.0 * r + NODE_SPACING;
         }
+        x += width + NODE_SPACING;
     }
-    clamp(pos, size)
+    fit(pos, size)
 }
 
 /// Scales and translates positions, preserving proportions, so that their
@@ -310,6 +315,18 @@ mod tests {
         let (g, _) = graph(5, &[(0, 1), (1, 2), (0, 3), (3, 4), (4, 3)]);
         let p = components(&g, SIZE);
         assert!(p[1][0] < p[2][0] && p[2][0] < p[3][0], "{p:?}");
+    }
+
+    #[test]
+    fn test_components_spacing() {
+        let (g, _) = graph(5, &[(0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 3)]);
+        let p = components(&g, SIZE);
+        for i in 0..5 {
+            for j in i + 1..5 {
+                let d = (p[i][0] - p[j][0]).hypot(p[i][1] - p[j][1]);
+                assert!(d >= 100.0, "nodes {i} and {j} are {d} apart: {p:?}");
+            }
+        }
     }
 
     #[test]
