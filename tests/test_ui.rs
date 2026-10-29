@@ -188,3 +188,49 @@ fn test_render_details() {
         .save("target/screenshots/details.png")
         .unwrap();
 }
+
+#[test]
+fn test_generate_random() {
+    let mut h = harness();
+    h.run();
+    h.state_mut()
+        .generate_random(pagerank_explorer::random::ChungLu::default(), 3);
+    h.run();
+    let app = h.state();
+    let g = app.session().graph();
+    assert_eq!(g.len(), 10);
+    assert_eq!(g.seed(), Some(3));
+    let size = app.canvas_rect().size();
+    assert!(
+        g.nodes()
+            .iter()
+            .all(|n| n.pos[0] <= size.x && n.pos[1] <= size.y)
+    );
+    assert!(app.session().ghost().is_none());
+}
+
+/// Renders a random graph with the random-graph dialog open offscreen to
+/// `target/screenshots/` for visual inspection. Run with
+/// `cargo test --test test_ui -- --ignored`.
+#[test]
+#[ignore]
+fn test_render_random() {
+    let mut h = Harness::builder()
+        .with_size([1280.0, 720.0])
+        .with_theme(egui::Theme::Light)
+        .wgpu()
+        .build_eframe(|cc| App::new(cc));
+    h.run();
+    h.state_mut()
+        .generate_random(pagerank_explorer::random::ChungLu::default(), 3);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::R);
+    for _ in 0..90 {
+        h.step();
+    }
+    h.run();
+    std::fs::create_dir_all("target/screenshots").unwrap();
+    h.render()
+        .unwrap()
+        .save("target/screenshots/random.png")
+        .unwrap();
+}

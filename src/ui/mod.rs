@@ -5,6 +5,7 @@
 //! hovered node, animations, dialogs).
 
 mod canvas;
+mod dialogs;
 mod geometry;
 mod palette;
 mod plot;
@@ -14,6 +15,7 @@ use std::collections::HashMap;
 use egui::{FontId, Key, KeyboardShortcut, Modifiers, TextStyle};
 
 use canvas::Animation;
+use dialogs::Dialogs;
 
 use crate::Session;
 use crate::edit::{Editor, Gesture, Target};
@@ -100,6 +102,7 @@ pub struct App {
     /// The target and canvas-local position of the last right click.
     context: Option<(Target, [f32; 2])>,
     animation: Option<Animation>,
+    dialogs: Dialogs,
     fixed_y: bool,
     canvas_rect: egui::Rect,
     /// The time of the current frame, in seconds.
@@ -129,6 +132,7 @@ impl App {
             dragging: None,
             context: None,
             animation: None,
+            dialogs: Dialogs::default(),
             fixed_y: false,
             canvas_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, DEFAULT_CANVAS.into()),
             now: 0.0,
@@ -198,8 +202,15 @@ impl App {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
             }
-            // Dialog commands are not wired yet.
-            Command::New | Command::Open | Command::Save | Command::SaveAs | Command::Random => {}
+            Command::New => self.open_new_graph_dialog(),
+            Command::Open => self.open(),
+            Command::Save => {
+                self.save();
+            }
+            Command::SaveAs => {
+                self.save_as();
+            }
+            Command::Random => self.open_random_dialog(),
         }
     }
 
@@ -323,5 +334,6 @@ impl eframe::App for App {
         if !self.hover_seen {
             self.hovered = None;
         }
+        self.dialogs(&ctx);
     }
 }
