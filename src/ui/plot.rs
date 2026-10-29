@@ -1,13 +1,14 @@
-//! The PageRank curve plot.
+//! The plot of the curves of the current centrality.
 
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Align2, Color32, FontId};
 use egui_plot::{
-    Line, LineStyle, Plot, PlotPoint, PlotPoints, Points, Text, VLine, uniform_grid_spacer,
+    GridInput, GridMark, Line, LineStyle, Plot, PlotPoint, PlotPoints, Points, Text, VLine,
+    uniform_grid_spacer,
 };
 
 use super::{App, palette};
-use crate::rank::Ranking;
+use crate::rank::{Axis, Ranking};
 
 const ACCENT: Color32 = Color32::from_rgb(0x00, 0x71, 0xe3);
 const CURVE_WIDTH: f32 = 3.0;
@@ -17,8 +18,23 @@ const GHOST_WIDTH: f32 = 2.0;
 const LABEL_GAP: f64 = 18.0;
 /// The hover tolerance, in pixels.
 const HOVER_TOLERANCE: f64 = 10.0;
-/// The right end of the x axis, leaving room for the end labels.
-const X_MAX: f64 = 1.12;
+/// The right end of the x axis, as a multiple of the right end of the
+/// curves, leaving room for the end labels.
+const X_END: f64 = 1.12;
+/// The position of the end labels, as a multiple of the right end of the
+/// curves.
+const LABEL_X: f64 = 1.015;
+/// The size of the end labels.
+const LABEL_SIZE: f32 = 18.0;
+/// The size of the note on vanishing iterates.
+const NOTE_SIZE: f32 = 20.0;
+/// The color of the note on vanishing iterates.
+const NOTE_COLOR: Color32 = Color32::from_gray(60);
+/// The distance of the note on vanishing iterates above 0, in pixels, so
+/// that it clears the dots on the curves.
+const NOTE_GAP: f64 = 10.0;
+/// The size of exponents, relative to the text they follow.
+const EXPONENT_SCALE: f32 = 0.65;
 /// The vertical margin below 0 and above the maximum, as a fraction of the
 /// maximum, so that end labels at the extremes are not clipped.
 const Y_MARGIN: f64 = 0.05;
@@ -51,34 +67,97 @@ pub fn group_end_labels(values: &[(usize, f64)], min_gap: f64) -> Vec<(f64, Vec<
         .collect()
 }
 
-/// Returns the value of a curve at `alpha`, interpolating linearly between
-/// samples.
-fn value_at(alphas: &[f64], curve: &[f64], alpha: f64) -> f64 {
-    let k = alphas
-        .partition_point(|&a| a <= alpha)
-        .clamp(1, alphas.len() - 1);
-    let (a0, a1) = (alphas[k - 1], alphas[k]);
-    let t = ((alpha - a0) / (a1 - a0)).clamp(0.0, 1.0);
+/// Returns the value of a curve sampled at `xs` at `x`, interpolating
+/// linearly between samples, and extending the first and last samples
+/// beyond the ends (a curve with a single sample is constant).
+fn value_at(xs: &[f64], curve: &[f64], x: f64) -> f64 {
+    if xs.len() == 1 {
+        return curve[0];
+    }
+    let k = xs.partition_point(|&a| a <= x).clamp(1, xs.len() - 1);
+    let (x0, x1) = (xs[k - 1], xs[k]);
+    let t = ((x - x0) / (x1 - x0)).clamp(0.0, 1.0);
     curve[k - 1] * (1.0 - t) + curve[k] * t
 }
 
-/// Returns the index of the curve whose value at `alpha` is closest to `y`,
-/// if it is within `tol`.
-pub fn nearest_curve(ranking: &Ranking, alpha: f64, y: f64, tol: f64) -> Option<usize> {
+/// Returns the index of the curve whose value at `x` is closest to `y`, if
+/// it is within `tol`.
+pub fn nearest_curve(ranking: &Ranking, x: f64, y: f64, tol: f64) -> Option<usize> {
     ranking
         .curves
         .iter()
         .enumerate()
-        .map(|(i, curve)| (i, (value_at(&ranking.xs, curve, alpha) - y).abs()))
+        .map(|(i, curve)| (i, (value_at(&ranking.xs, curve, x) - y).abs()))
         .filter(|&(_, d)| d <= tol)
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(i, _)| i)
 }
 
-/// Shows the plot of the PageRank curves.
+/// Returns the step sizes of the grid of the x-axis: tenths and twentieths
+/// for continuous axes, units for iterations, and none for flat curves.
+fn x_steps(axis: Axis) -> Option<[f64; 3]> {
+    match axis {
+        Axis::Iteration => Some([10.0, 5.0, 1.0]),
+        Axis::Flat => None,
+        _ => Some([0.5, 0.1, 0.05]),
+    }
+}
+
+/// Returns the label of the tick at `x` of an axis, up to the right end of
+/// the curves: multiples of 0.1 with one decimal for continuous axes,
+/// multiples of 10 for iterations, and nothing otherwise.
+fn x_tick_label(axis: Axis, x: f64) -> String {
+    let (unit, decimals) = match axis {
+        Axis::Iteration => (10.0, 0),
+        Axis::Flat => return String::new(),
+        _ => (0.1, 1),
+    };
+    let units = x / unit;
+    if x <= axis.x_max() + 1e-9 && (units - units.round()).abs() < 1e-6 {
+        format!("{x:.decimals$}")
+    } else {
+        String::new()
+    }
+}
+
+/// Returns the note on iterates that vanish from iteration `v` on,
+/// "1·Aᵏ = 0 for k ≥ `v`", with *A* and *k* in italics, on the given
+/// background; the exponent is raised by layout, as the default font has no
+/// superscript *k*.
+fn vanished_note(v: usize, background: Color32) -> LayoutJob {
+    let normal = TextFormat {
+        background,
+        ..TextFormat::simple(FontId::proportional(NOTE_SIZE), NOTE_COLOR)
+    };
+    let italics = TextFormat {
+        italics: true,
+        ..normal.clone()
+    };
+    let exponent = TextFormat {
+        font_id: FontId::proportional(NOTE_SIZE * EXPONENT_SCALE),
+        valign: egui::Align::TOP,
+        ..italics.clone()
+    };
+    let mut job = LayoutJob::default();
+    for (text, format) in [
+        ("1·", &normal),
+        ("A", &italics),
+        ("k", &exponent),
+        (" = 0 for ", &normal),
+        ("k", &italics),
+        (&format!(" ≥ {v}"), &normal),
+    ] {
+        job.append(text, 0.0, format.clone());
+    }
+    job
+}
+
+/// Shows the plot of the curves of the current centrality.
 pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
     let session = &app.session;
     let ranking = session.ranking();
+    let axis = ranking.axis;
+    let x_max = axis.x_max();
     let graph = session.graph();
     let ghost = session.ghost();
     let ghost_max = ghost.map_or(0.0, |ghost| {
@@ -111,19 +190,25 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
     let hovered = app
         .hovered
         .and_then(|id| ranking.ids.iter().position(|&x| x == id));
-    let alpha = session.alpha();
+    let param = session.param();
     let scores = session.scores();
-    let points = |curve: &[f64]| -> PlotPoints<'_> {
-        ranking
-            .xs
-            .iter()
+    let points = |xs: &[f64], curve: &[f64]| -> PlotPoints<'_> {
+        xs.iter()
             .zip(curve)
-            .map(|(&a, &v)| [a, v])
+            .map(|(&x, &v)| [x, v])
             .collect::<Vec<_>>()
             .into()
     };
     let px_per_unit =
         (ui.available_height() as f64 - 60.0).max(100.0) / ((1.0 + 2.0 * Y_MARGIN) * y_max);
+    let x_spacer: Box<dyn Fn(GridInput) -> Vec<GridMark>> = match x_steps(axis) {
+        Some(steps) => uniform_grid_spacer(move |_| steps),
+        None => Box::new(|_| Vec::new()),
+    };
+    // Iterates of a nonempty graph that vanish (on an empty graph, they
+    // vanish trivially).
+    let vanished = ranking.vanished.filter(|_| !ranking.ids.is_empty());
+    let background = ui.visuals().extreme_bg_color;
 
     let response = Plot::new("curves")
         .allow_drag(false)
@@ -134,12 +219,12 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
         .show_x(false)
         .show_y(false)
         .show_crosshair(false)
-        .x_grid_spacer(uniform_grid_spacer(|_| [0.5, 0.1, 0.05]))
+        .x_grid_spacer(x_spacer)
         .y_grid_spacer(uniform_grid_spacer(move |_| {
             [y_max, y_max / 2.0, y_max / 10.0]
         }))
-        .x_axis_label("α")
-        .y_axis_label("PageRank")
+        .x_axis_label(axis.label())
+        .y_axis_label(ranking.centrality.name())
         .y_axis_formatter(|mark, _| {
             if mark.value >= -1e-9 {
                 format!("{:.2}", mark.value.abs())
@@ -147,22 +232,17 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
                 String::new()
             }
         })
-        .x_axis_formatter(|mark, _| {
-            let tenths = mark.value * 10.0;
-            if mark.value <= 1.0 + 1e-9 && (tenths - tenths.round()).abs() < 1e-6 {
-                format!("{:.1}", mark.value)
-            } else {
-                String::new()
-            }
-        })
+        .x_axis_formatter(move |mark, _| x_tick_label(axis, mark.value))
         .show(ui, |plot_ui| {
-            plot_ui.set_plot_bounds_x(0.0..=X_MAX);
+            plot_ui.set_plot_bounds_x(0.0..=x_max * X_END);
             plot_ui.set_plot_bounds_y(-Y_MARGIN * y_max..=(1.0 + Y_MARGIN) * y_max);
             if let Some(ghost) = ghost {
                 for (i, &id) in ranking.ids.iter().enumerate() {
                     if let Some(curve) = ghost.curve(id) {
+                        // The ghost has its own samples: for example, its
+                        // iterates may vanish at a different iteration.
                         plot_ui.line(
-                            Line::new(format!("before {}", labels[i]), points(curve))
+                            Line::new(format!("before {}", labels[i]), points(&ghost.xs, curve))
                                 .color(colors[i].gamma_multiply(0.45))
                                 .width(GHOST_WIDTH)
                                 .style(LineStyle::dashed_loose())
@@ -184,27 +264,29 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
                     None => (colors[i], CURVE_WIDTH),
                 };
                 plot_ui.line(
-                    Line::new(labels[i].clone(), points(&ranking.curves[i]))
+                    Line::new(labels[i].clone(), points(&ranking.xs, &ranking.curves[i]))
                         .color(color)
                         .width(width)
                         .allow_hover(false),
                 );
             }
-            plot_ui.vline(VLine::new("α", alpha).color(ACCENT).width(1.5));
-            for &i in &order {
-                let point = vec![[alpha, scores[i]]];
-                plot_ui.points(
-                    Points::new("", point.clone())
-                        .radius(7.0)
-                        .color(Color32::WHITE)
-                        .filled(true),
-                );
-                plot_ui.points(
-                    Points::new(labels[i].clone(), point)
-                        .radius(5.0)
-                        .color(colors[i])
-                        .filled(true),
-                );
+            if let Some(x) = param {
+                plot_ui.vline(VLine::new(axis.label(), x).color(ACCENT).width(1.5));
+                for &i in &order {
+                    let point = vec![[x, scores[i]]];
+                    plot_ui.points(
+                        Points::new("", point.clone())
+                            .radius(7.0)
+                            .color(Color32::WHITE)
+                            .filled(true),
+                    );
+                    plot_ui.points(
+                        Points::new(labels[i].clone(), point)
+                            .radius(5.0)
+                            .color(colors[i])
+                            .filled(true),
+                    );
+                }
             }
             let ends: Vec<(usize, f64)> = ranking
                 .curves
@@ -215,7 +297,7 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
             for (value, members) in group_end_labels(&ends, LABEL_GAP / px_per_unit) {
                 let mut job = LayoutJob::default();
                 for (k, &i) in members.iter().enumerate() {
-                    let format = TextFormat::simple(FontId::proportional(18.0), colors[i]);
+                    let format = TextFormat::simple(FontId::proportional(LABEL_SIZE), colors[i]);
                     let text = if k == 0 {
                         labels[i].clone()
                     } else {
@@ -224,9 +306,22 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
                     job.append(&text, 0.0, format);
                 }
                 plot_ui.text(
-                    Text::new("", PlotPoint::new(1.015, value), job)
+                    Text::new("", PlotPoint::new(x_max * LABEL_X, value), job)
                         .anchor(Align2::LEFT_CENTER)
                         .allow_hover(false),
+                );
+            }
+            // At the bottom right of the curves, just above 0, masking the
+            // vertical line.
+            if let Some(v) = vanished {
+                plot_ui.text(
+                    Text::new(
+                        "",
+                        PlotPoint::new(x_max, NOTE_GAP / px_per_unit),
+                        vanished_note(v, background),
+                    )
+                    .anchor(Align2::RIGHT_BOTTOM)
+                    .allow_hover(false),
                 );
             }
             plot_ui.pointer_coordinate()
@@ -237,7 +332,7 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
         app.hovered = response.inner.and_then(|p| {
             nearest_curve(
                 ranking,
-                p.x.clamp(0.0, 1.0),
+                p.x.clamp(0.0, x_max),
                 p.y,
                 HOVER_TOLERANCE / px_per_unit,
             )
@@ -247,7 +342,7 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
     if (response.response.clicked() || response.response.dragged())
         && let Some(p) = response.inner
     {
-        app.session.set_alpha(p.x.clamp(0.0, 1.0));
+        app.session.set_param(p.x.clamp(0.0, x_max));
     }
 }
 
@@ -272,6 +367,11 @@ mod tests {
         assert_eq!(groups[0].1, vec![0, 2]);
         assert_eq!(groups[1].1, vec![1, 3]);
         assert!((groups[1].0 - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_value_at_single_sample() {
+        assert_eq!(value_at(&[0.0], &[0.3], 5.0), 0.3);
     }
 
     #[test]

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use egui::{Align2, Color32, FontId, Pos2, Shape, Stroke, Vec2, pos2, vec2};
 
 use super::geometry::{dist_to_segment, ease, hull, node_radius};
-use super::{App, Command, palette};
+use super::{App, Command, centrality_menu, palette};
 use crate::edit::{self, EditKey, Gesture, Target};
 use crate::graph::NodeId;
 use crate::layouts;
@@ -276,6 +276,7 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         .enumerate()
         .map(|(i, node)| (node.id, i))
         .collect();
+    let hull_label = app.session.ranking().hull_label;
     for component in &app.session.ranking().hulls {
         let members: Vec<usize> = component
             .iter()
@@ -311,7 +312,7 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         painter.text(
             pos2(mid, bottom + 4.0),
             Align2::CENTER_TOP,
-            "sinks",
+            hull_label,
             FontId::proportional(15.0),
             tint,
         );
@@ -449,6 +450,12 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
                             command = Some(Command::Layout(layout));
                             ui.close();
                         }
+                    }
+                });
+                ui.menu_button("Centrality", |ui| {
+                    if let Some(c) = centrality_menu(ui, app.session.centrality()) {
+                        command = Some(Command::Centrality(c));
+                        ui.close();
                     }
                 });
                 ui.separator();

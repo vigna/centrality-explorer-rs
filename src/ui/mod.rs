@@ -12,7 +12,7 @@ mod plot;
 
 use std::collections::HashMap;
 
-use egui::{FontId, Key, KeyboardShortcut, Modifiers, TextStyle};
+use egui::{FontId, Key, KeyboardShortcut, Modifiers, RichText, TextStyle};
 
 use canvas::Animation;
 use dialogs::Dialogs;
@@ -21,12 +21,16 @@ use crate::Session;
 use crate::edit::{Editor, Gesture, Target};
 use crate::graph::{Graph, NodeId};
 use crate::layouts;
+use crate::rank::{Axis, Centrality, ITERATIONS};
 
 /// The application name.
 const NAME: &str = "Centrality Explorer";
 
 /// The default canvas size, used before the first frame.
 const DEFAULT_CANVAS: [f32; 2] = [640.0, 640.0];
+
+/// The size of the name of the current centrality over the plot.
+const TITLE_SIZE: f32 = 32.0;
 
 /// A layout algorithm.
 type Layout = fn(&Graph, [f32; 2]) -> Vec<[f32; 2]>;
@@ -46,6 +50,19 @@ const CIRCLE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::
 const COMPONENTS: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Num3);
 const FULLSCREEN: KeyboardShortcut =
     KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::F);
+/// The modifiers of the shortcuts of the centralities.
+const CMD_ALT: Modifiers = Modifiers::COMMAND.plus(Modifiers::ALT);
+/// The shortcuts of the centralities, Cmd-Alt-1 to Cmd-Alt-7, in the order of
+/// [`Centrality::ALL`].
+const CENTRALITIES: [KeyboardShortcut; 7] = [
+    KeyboardShortcut::new(CMD_ALT, Key::Num1),
+    KeyboardShortcut::new(CMD_ALT, Key::Num2),
+    KeyboardShortcut::new(CMD_ALT, Key::Num3),
+    KeyboardShortcut::new(CMD_ALT, Key::Num4),
+    KeyboardShortcut::new(CMD_ALT, Key::Num5),
+    KeyboardShortcut::new(CMD_ALT, Key::Num6),
+    KeyboardShortcut::new(CMD_ALT, Key::Num7),
+];
 
 /// A command from a menu, a shortcut, or a context menu.
 #[derive(Clone, Copy, Debug)]
@@ -59,15 +76,24 @@ enum Command {
     Redo,
     Random,
     Layout(Layout),
+    Centrality(Centrality),
     Fullscreen,
 }
 
-/// Shortcuts and their commands, shifted variants first (shortcuts match
-/// modifiers logically, so Cmd-Z would also match Cmd-Shift-Z).
-const SHORTCUTS: [(KeyboardShortcut, Command); 12] = [
+/// Shortcuts and their commands, variants with extra modifiers first
+/// (shortcuts match modifiers logically, so Cmd-Z would also match
+/// Cmd-Shift-Z, and Cmd-1 would also match Cmd-Alt-1).
+const SHORTCUTS: [(KeyboardShortcut, Command); 19] = [
     (SAVE_AS, Command::SaveAs),
     (REDO, Command::Redo),
     (FULLSCREEN, Command::Fullscreen),
+    (CENTRALITIES[0], Command::Centrality(Centrality::ALL[0])),
+    (CENTRALITIES[1], Command::Centrality(Centrality::ALL[1])),
+    (CENTRALITIES[2], Command::Centrality(Centrality::ALL[2])),
+    (CENTRALITIES[3], Command::Centrality(Centrality::ALL[3])),
+    (CENTRALITIES[4], Command::Centrality(Centrality::ALL[4])),
+    (CENTRALITIES[5], Command::Centrality(Centrality::ALL[5])),
+    (CENTRALITIES[6], Command::Centrality(Centrality::ALL[6])),
     (NEW, Command::New),
     (OPEN, Command::Open),
     (SAVE, Command::Save),
@@ -209,6 +235,7 @@ impl App {
                 self.prune();
             }
             Command::Layout(layout) => self.apply_layout(layout),
+            Command::Centrality(c) => self.session.set_centrality(c),
             Command::Fullscreen => {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
@@ -249,8 +276,7 @@ impl App {
                 step
             });
             if step != 0 {
-                let alpha = ((self.session.alpha() * 100.0).round() + step as f64) / 100.0;
-                self.session.set_alpha(alpha);
+                self.session.step_param(step);
             }
         }
     }
@@ -266,6 +292,8 @@ impl App {
                 command = Some(c);
             }
         };
+        let current = self.session.centrality();
+        let mut centrality = None;
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 item(ui, "New…", &NEW, Command::New);
@@ -301,6 +329,9 @@ impl App {
                     Command::Layout(layouts::components),
                 );
             });
+            ui.menu_button("Centrality", |ui| {
+                centrality = centrality_menu(ui, current);
+            });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut self.fixed_y, "Fixed y-axis [0, 1]");
                 item(ui, "Full Screen", &FULLSCREEN, Command::Fullscreen);
@@ -308,25 +339,97 @@ impl App {
                 egui::gui_zoom::zoom_menu_buttons(ui);
             });
         });
+        if let Some(c) = centrality {
+            command = Some(Command::Centrality(c));
+        }
         if let Some(command) = command {
             self.execute(ui.ctx(), command);
         }
     }
 
-    fn alpha_slider(&mut self, ui: &mut egui::Ui) {
+    /// Shows the name of the current centrality, large enough to be read
+    /// from the back of a room.
+    fn title(&self, ui: &mut egui::Ui) {
+        ui.vertical_centered(|ui| {
+            ui.label(
+                RichText::new(self.session.centrality().name())
+                    .size(TITLE_SIZE)
+                    .strong(),
+            );
+        });
+    }
+
+    /// Shows the slider of the parameter of the current centrality, if
+    /// any, labeled with its value and, for Katz's index, followed by ρ.
+    fn param_slider(&mut self, ui: &mut egui::Ui) {
+        let Some(mut x) = self.session.param() else {
+            return;
+        };
+        let ranking = self.session.ranking();
+        let (axis, rho) = (ranking.axis, ranking.rho);
+        let katz = ranking.centrality == Centrality::Katz;
         ui.horizontal(|ui| {
-            let label = ui.heading(format!("α = {:.2}", self.session.alpha()));
+            let label = ui.heading(param_label(axis, x));
+            // The label is padded to its widest value, so that the slider
+            // does not move under the pointer as the label changes.
+            let widest = ui
+                .painter()
+                .layout_no_wrap(
+                    param_label(axis, axis.x_max()),
+                    TextStyle::Heading.resolve(ui.style()),
+                    egui::Color32::BLACK,
+                )
+                .size()
+                .x;
+            ui.add_space((widest - label.rect.width()).max(0.0));
+            if katz && let Some(rho) = rho {
+                ui.add_space(ui.spacing().item_spacing.x);
+                ui.heading(format!("ρ = {rho:.3}"));
+            }
             ui.spacing_mut().slider_width = ui.available_width() - 8.0;
-            let mut alpha = self.session.alpha();
+            let slider = match axis {
+                Axis::Iteration => egui::Slider::new(&mut x, 0.0..=ITERATIONS as f64).integer(),
+                _ => egui::Slider::new(&mut x, 0.0..=1.0),
+            };
             if ui
-                .add(egui::Slider::new(&mut alpha, 0.0..=1.0).show_value(false))
+                .add(slider.show_value(false))
                 .labelled_by(label.id)
                 .changed()
             {
-                self.session.set_alpha(alpha);
+                self.session.set_param(x);
             }
         });
     }
+}
+
+/// Returns the label of the slider of a parameter with value `x` on an
+/// axis: "k = *x*" for iterations, and the label of the axis followed by
+/// *x* with two decimals otherwise.
+fn param_label(axis: Axis, x: f64) -> String {
+    match axis {
+        Axis::Iteration => format!("k = {x:.0}"),
+        _ => format!("{} = {x:.2}", axis.label()),
+    }
+}
+
+/// Shows one selectable item per centrality, grouped by family, with the
+/// current one checked and the shortcut of each; returns the centrality
+/// clicked, if any.
+fn centrality_menu(ui: &mut egui::Ui, current: Centrality) -> Option<Centrality> {
+    let mut clicked = None;
+    for (c, shortcut) in Centrality::ALL.into_iter().zip(&CENTRALITIES) {
+        let shortcut = ui.ctx().format_shortcut(shortcut);
+        if ui
+            .add(egui::Button::selectable(c == current, c.name()).shortcut_text(shortcut))
+            .clicked()
+        {
+            clicked = Some(c);
+        }
+        if matches!(c, Centrality::Katz | Centrality::Eigenvector) {
+            ui.separator();
+        }
+    }
+    clicked
 }
 
 impl eframe::App for App {
@@ -341,7 +444,10 @@ impl eframe::App for App {
             .exact_size(half)
             .resizable(false)
             .show(ui, |ui| {
-                egui::Panel::bottom("alpha").show(ui, |ui| self.alpha_slider(ui));
+                egui::Panel::top("centrality").show(ui, |ui| self.title(ui));
+                if self.session.param().is_some() {
+                    egui::Panel::bottom("param").show(ui, |ui| self.param_slider(ui));
+                }
                 egui::CentralPanel::default().show(ui, |ui| plot::plot(self, ui));
             });
         egui::CentralPanel::default().show(ui, |ui| canvas::canvas(self, ui));

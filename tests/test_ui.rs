@@ -41,7 +41,8 @@ fn test_alpha_arrows() {
     assert!((h.state().session().alpha() - 0.86).abs() < 1e-9);
 }
 
-use centrality_explorer::graph::NodeId;
+use centrality_explorer::graph::{Graph, NodeId};
+use centrality_explorer::rank::{Centrality, ITERATIONS};
 
 fn screen(h: &Harness<'static, App>, p: [f32; 2]) -> egui::Pos2 {
     h.state().canvas_rect().min + egui::vec2(p[0], p[1])
@@ -249,16 +250,11 @@ fn test_quit_asks_about_unsaved_changes() {
     assert!(h.query_by_label("Unsaved Changes").is_some());
 }
 
-/// Builds the lecture example (after closing {d, e}) in a light-theme
-/// harness rendering with wgpu.
-fn lecture_harness() -> (Harness<'static, App>, Vec<NodeId>) {
-    let mut h = Harness::builder()
-        .with_size([1280.0, 720.0])
-        .with_theme(egui::Theme::Light)
-        .wgpu()
-        .build_eframe(|cc| App::new(cc));
-    h.run();
-    let mut g = h.state().session().graph().clone();
+/// Returns the lecture example on the graph of the harness before and after
+/// the edit that closes {d, e}, that is, a → b → c → a, c → d → e, and the
+/// same graph with e → d, with the identifiers of a, …, e.
+fn lecture_example(h: &Harness<'static, App>) -> (Graph, Graph, Vec<NodeId>) {
+    let mut before = h.state().session().graph().clone();
     let pos = [
         [120.0, 200.0],
         [260.0, 110.0],
@@ -266,11 +262,31 @@ fn lecture_harness() -> (Harness<'static, App>, Vec<NodeId>) {
         [380.0, 460.0],
         [500.0, 330.0],
     ];
-    let ids: Vec<_> = pos.iter().map(|&p| g.add_node(p)).collect();
-    for (s, t) in [(0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 3)] {
-        g.add_arc(ids[s], ids[t]);
+    let ids: Vec<_> = pos.iter().map(|&p| before.add_node(p)).collect();
+    for (s, t) in [(0, 1), (1, 2), (2, 0), (2, 3), (3, 4)] {
+        before.add_arc(ids[s], ids[t]);
     }
-    h.state_mut().session_mut().commit(g);
+    let mut after = before.clone();
+    after.add_arc(ids[4], ids[3]);
+    (before, after, ids)
+}
+
+/// Returns a light-theme harness rendering with wgpu.
+fn wgpu_harness() -> Harness<'static, App> {
+    Harness::builder()
+        .with_size([1280.0, 720.0])
+        .with_theme(egui::Theme::Light)
+        .wgpu()
+        .build_eframe(|cc| App::new(cc))
+}
+
+/// Builds the lecture example (after closing {d, e}) in a light-theme
+/// harness rendering with wgpu.
+fn lecture_harness() -> (Harness<'static, App>, Vec<NodeId>) {
+    let mut h = wgpu_harness();
+    h.run();
+    let (_, after, ids) = lecture_example(&h);
+    h.state_mut().session_mut().commit(after);
     h.run();
     (h, ids)
 }
@@ -337,4 +353,93 @@ fn test_render_zoomed_components() {
         .unwrap()
         .save("target/screenshots/zoomed_components.png")
         .unwrap();
+}
+
+#[test]
+fn test_centrality_shortcuts() {
+    let (mut h, _, _) = two_node_app();
+    h.key_press_modifiers(
+        egui::Modifiers::COMMAND | egui::Modifiers::ALT,
+        egui::Key::Num2,
+    );
+    h.run();
+    assert_eq!(h.state().session().centrality(), Centrality::Katz);
+    let before = h.state().session().graph().clone();
+    h.key_press_modifiers(
+        egui::Modifiers::COMMAND | egui::Modifiers::ALT,
+        egui::Key::Num1,
+    );
+    h.run();
+    assert_eq!(h.state().session().centrality(), Centrality::PageRank);
+    // Cmd-Alt-1 is not taken for Cmd-1, the force-directed layout
+    assert_eq!(h.state().session().graph(), &before);
+}
+
+#[test]
+fn test_iteration_arrows() {
+    let mut h = harness();
+    h.run();
+    h.state_mut()
+        .session_mut()
+        .set_centrality(Centrality::Seeley);
+    h.key_press(egui::Key::ArrowLeft);
+    h.run();
+    assert_eq!(h.state().session().iteration(), ITERATIONS - 1);
+}
+
+/// With no arcs, the eigenvector iterates vanish at k = 1, so the curves
+/// have a single sample: hovering them must not panic.
+#[test]
+fn test_vanished_eigenvector_hover() {
+    let (mut h, _, _) = two_node_app();
+    h.state_mut()
+        .session_mut()
+        .set_centrality(Centrality::Eigenvector);
+    h.run();
+    h.hover_at(egui::pos2(900.0, 300.0));
+    h.run();
+    h.key_press(egui::Key::ArrowLeft);
+    h.run();
+    let session = h.state().session();
+    assert_eq!(session.iteration(), ITERATIONS - 1);
+    assert!(session.scores().iter().all(|&x| x == 0.0));
+}
+
+#[test]
+fn test_every_centrality_renders() {
+    let mut h = harness();
+    h.run();
+    let (_, after, _) = lecture_example(&h);
+    h.state_mut().session_mut().commit(after);
+    h.run();
+    for c in Centrality::ALL {
+        h.state_mut().session_mut().set_centrality(c);
+        h.run();
+        assert_eq!(h.state().session().ranking().centrality, c);
+    }
+}
+
+/// Renders the lecture example after the edit that closes {d, e} under each
+/// centrality offscreen to `target/screenshots/` for visual inspection. Run
+/// with `cargo test --test test_ui -- --ignored`.
+#[test]
+#[ignore = "needs a GPU"]
+fn test_render_centralities() {
+    let mut h = wgpu_harness();
+    h.run();
+    let (before, after, _) = lecture_example(&h);
+    h.state_mut().session_mut().commit(before);
+    h.state_mut().session_mut().commit(after);
+    h.run();
+    std::fs::create_dir_all("target/screenshots").unwrap();
+    for c in Centrality::ALL {
+        h.state_mut().session_mut().set_centrality(c);
+        h.run();
+        // The lowercase variant name, as in files: pagerank, katz, …
+        let name = format!("{c:?}").to_lowercase();
+        h.render()
+            .unwrap()
+            .save(format!("target/screenshots/{name}.png"))
+            .unwrap();
+    }
 }
