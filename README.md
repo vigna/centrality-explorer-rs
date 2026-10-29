@@ -1,4 +1,4 @@
-# PageRank Explorer
+# Centrality Explorer
 
 A teaching aid to build intuition about PageRank centrality. The instructor
 edits a small directed graph at a projector, and the class watches, in real

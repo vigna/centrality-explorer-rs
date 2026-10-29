@@ -23,7 +23,7 @@ use crate::graph::{Graph, NodeId};
 use crate::layouts;
 
 /// The application name.
-const NAME: &str = "PageRank Explorer";
+const NAME: &str = "Centrality Explorer";
 
 /// The default canvas size, used before the first frame.
 const DEFAULT_CANVAS: [f32; 2] = [640.0, 640.0];

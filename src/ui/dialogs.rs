@@ -10,7 +10,7 @@ use crate::graph::Graph;
 use crate::random::ChungLu;
 
 /// The file-dialog filter name for graph files.
-const FILTER: &str = "PageRank Explorer graph";
+const FILTER: &str = "Centrality Explorer graph";
 
 /// Returns the window title for a session file and its unsaved state.
 pub fn window_title(path: Option<&Path>, dirty: bool) -> String {
@@ -326,14 +326,14 @@ mod tests {
 
     #[test]
     fn test_window_title() {
-        assert_eq!(window_title(None, true), "PageRank Explorer");
+        assert_eq!(window_title(None, true), "Centrality Explorer");
         assert_eq!(
             window_title(Some(Path::new("/x/lecture.json")), false),
-            "PageRank Explorer — lecture.json"
+            "Centrality Explorer — lecture.json"
         );
         assert_eq!(
             window_title(Some(Path::new("/x/lecture.json")), true),
-            "PageRank Explorer — lecture.json*"
+            "Centrality Explorer — lecture.json*"
         );
     }
 }

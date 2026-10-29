@@ -1,5 +1,5 @@
+use centrality_explorer::ui::App;
 use egui_kittest::Harness;
-use pagerank_explorer::ui::App;
 
 fn harness() -> Harness<'static, App> {
     Harness::builder()
@@ -41,7 +41,7 @@ fn test_alpha_arrows() {
     assert!((h.state().session().alpha() - 0.86).abs() < 1e-9);
 }
 
-use pagerank_explorer::graph::NodeId;
+use centrality_explorer::graph::NodeId;
 
 fn screen(h: &Harness<'static, App>, p: [f32; 2]) -> egui::Pos2 {
     h.state().canvas_rect().min + egui::vec2(p[0], p[1])
@@ -194,7 +194,7 @@ fn test_generate_random() {
     let mut h = harness();
     h.run();
     h.state_mut()
-        .generate_random(pagerank_explorer::random::ChungLu::default(), 3);
+        .generate_random(centrality_explorer::random::ChungLu::default(), 3);
     h.run();
     let app = h.state();
     let g = app.session().graph();
@@ -222,7 +222,7 @@ fn test_render_random() {
         .build_eframe(|cc| App::new(cc));
     h.run();
     h.state_mut()
-        .generate_random(pagerank_explorer::random::ChungLu::default(), 3);
+        .generate_random(centrality_explorer::random::ChungLu::default(), 3);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::R);
     for _ in 0..90 {
         h.step();

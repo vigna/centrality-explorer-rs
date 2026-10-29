@@ -1,8 +1,8 @@
 [package]
-name = "pagerank-explorer"
+name = "centrality-explorer"
 version = "0.1.0"
 edition = "2024"
-description = "A teaching aid to build intuition about PageRank as a function of the damping factor"
+description = "A teaching aid to build intuition about centrality measures"
 license = "Apache-2.0 OR LGPL-2.1-or-later"
 readme = "README.md"
 authors = ["Sebastiano Vigna <sebastiano.vigna@unimi.it>"]
