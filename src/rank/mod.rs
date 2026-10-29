@@ -6,10 +6,12 @@
 
 mod geometric;
 mod lu;
+mod power;
 mod scc;
 mod spectral;
 
 pub use geometric::{betweenness, closeness, harmonic};
+pub use power::{eigenvector_iterates, seeley_iterates};
 pub use scc::{sccs, terminal_sccs};
 pub use spectral::{Spectrum, katz};
 
