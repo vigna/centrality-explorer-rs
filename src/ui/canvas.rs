@@ -276,7 +276,7 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         .enumerate()
         .map(|(i, node)| (node.id, i))
         .collect();
-    for component in &app.session.ranking().terminal {
+    for component in &app.session.ranking().sinks {
         let members: Vec<usize> = component
             .iter()
             .filter_map(|id| index.get(id).copied())
@@ -311,7 +311,7 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         painter.text(
             pos2(mid, bottom + 4.0),
             Align2::CENTER_TOP,
-            "terminal",
+            "sinks",
             FontId::proportional(15.0),
             tint,
         );

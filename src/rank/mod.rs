@@ -105,10 +105,10 @@ pub fn pagerank(chain: &Chain, alpha: f64) -> Vec<f64> {
 /// Returns the terminal strongly connected components of the chain actually
 /// walked, in which dangling nodes link to every node.
 ///
-/// These are the components on which the [`limit`] is supported. They
-/// differ from the [terminal components of the graph](terminal_sccs) only
-/// because of dangling nodes: a lone dangling node is never terminal for the
-/// walk.
+/// These are the components on which the [`limit`] is supported. If the
+/// graph has [sinks](Ranking::sinks), they are exactly the sinks; otherwise,
+/// the walk restarts from the dangling nodes, and the whole graph is a
+/// single terminal component.
 ///
 /// Each component is sorted, and components are sorted by their smallest
 /// node.
@@ -197,9 +197,10 @@ pub struct Ranking {
     pub alphas: Vec<f64>,
     /// `curves[i][k]` is the PageRank of `ids[i]` at `alphas[k]`.
     pub curves: Vec<Vec<f64>>,
-    /// The terminal components of the graph, that is, the strongly connected
-    /// components with no arc leaving them (see [`terminal_sccs`]).
-    pub terminal: Vec<Vec<NodeId>>,
+    /// The sinks of the graph, that is, its [terminal
+    /// components](terminal_sccs) other than lone dangling nodes, which the
+    /// walk leaves by jumping to every node.
+    pub sinks: Vec<Vec<NodeId>>,
     /// The dangling nodes.
     pub dangling: Vec<NodeId>,
     chain: Chain,
@@ -218,8 +219,9 @@ impl Ranking {
                 curve.push(x);
             }
         }
-        let terminal = terminal_sccs(chain.successors())
+        let sinks = terminal_sccs(chain.successors())
             .into_iter()
+            .filter(|component| !(component.len() == 1 && chain.is_dangling(component[0])))
             .map(|component| component.into_iter().map(|v| ids[v]).collect())
             .collect();
         let dangling = (0..ids.len())
@@ -230,7 +232,7 @@ impl Ranking {
             ids,
             alphas,
             curves,
-            terminal,
+            sinks,
             dangling,
             chain,
         }
@@ -372,12 +374,35 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_ranking_terminal_is_graph_terminal() {
+    fn test_ranking_sinks() {
         let mut g = Graph::new(true);
         let ids: Vec<_> = (0..3).map(|i| g.add_node([i as f32, 0.0])).collect();
         g.add_arc(ids[0], ids[1]);
         g.add_arc(ids[1], ids[2]);
-        assert_eq!(Ranking::new(&g).terminal, vec![vec![ids[2]]]);
+        // c is terminal, but dangling
+        assert!(Ranking::new(&g).sinks.is_empty());
+        g.add_arc(ids[2], ids[2]);
+        assert_eq!(Ranking::new(&g).sinks, vec![vec![ids[2]]]);
+        // a dangling node beside a sink
+        let d = g.add_node([3.0, 0.0]);
+        g.add_arc(ids[0], d);
+        assert_eq!(Ranking::new(&g).sinks, vec![vec![ids[2]]]);
+    }
+
+    #[test]
+    fn test_terminal_components_are_sinks() {
+        let mut g = Graph::new(true);
+        let ids: Vec<_> = (0..6).map(|i| g.add_node([i as f32, 0.0])).collect();
+        // f is dangling; c↔d and the self-loop on e are sinks
+        for (s, t) in [(0, 1), (0, 2), (2, 3), (3, 2), (1, 4), (4, 4), (0, 5)] {
+            g.add_arc(ids[s], ids[t]);
+        }
+        let chain = Chain::from_graph(&g);
+        assert_eq!(terminal_components(&chain), vec![vec![2, 3], vec![4]]);
+        assert_eq!(
+            Ranking::new(&g).sinks,
+            vec![vec![ids[2], ids[3]], vec![ids[4]]]
+        );
     }
 
     #[test]
@@ -440,7 +465,7 @@ pub(crate) mod tests {
         assert_eq!(r.alphas[0], 0.0);
         assert_eq!(*r.alphas.last().unwrap(), 1.0);
         assert!((r.curve(ids[3]).unwrap().last().unwrap() - 0.5).abs() < 1e-12);
-        assert_eq!(r.terminal, vec![vec![ids[3], ids[4]]]);
+        assert_eq!(r.sinks, vec![vec![ids[3], ids[4]]]);
         assert!(r.dangling.is_empty());
         assert_close(&r.scores(0.85), &pagerank(&example_after(), 0.85), 1e-12);
     }

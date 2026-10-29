@@ -6,9 +6,8 @@ time, how the PageRank of each node changes as a function of the damping
 factor α ∈ [0 . . 1].
 
 The central picture is the plot of the PageRank of each node against α. When
-an edit closes or opens a terminal strongly connected component, the curves
-change shape all of a sudden, most visibly near α = 1, where the score
-concentrates on the terminal components.
+an edit closes or opens a sink, the curves change shape all of a sudden, most
+visibly near α = 1, where the score concentrates on the sinks.
 
 ## Building and Running
 
@@ -31,8 +30,10 @@ not run on an older one.
   curve; node labels at the right end of the plot name the curves.
 - After each edit, the curves from before the edit remain visible as faded
   dashed lines, until the next edit.
-- Shaded hulls mark the terminal strongly connected components: groups of
-  nodes with no edge leaving them (a dangling node is one by itself).
+- Shaded hulls mark the sinks: terminal strongly connected components (groups
+  of nodes with no edge leaving them) other than lone dangling nodes. A
+  dangling node is terminal, but the walk leaves it by jumping to every node,
+  so it does not keep the rank that enters it.
 - Nodes with a dashed outline are dangling: they have no outgoing edges, so
   the walk jumps from them to a node chosen uniformly at random.
 
@@ -71,9 +72,9 @@ Undo and redo cover every change to the graph, so flipping between them is a
 quick way to show the same graph before and after an edit.
 
 Random graphs follow the directed Chung–Lu model, whose in-degrees and
-out-degrees follow a power law. Sparse random graphs often have no closed
-component containing a cycle, in which case PageRank at α = 1 vanishes on
-no node (see below); add the missing structure by hand.
+out-degrees follow a power law. Sparse random graphs often have no sink, in
+which case PageRank at α = 1 vanishes on no node (see below); add the
+missing structure by hand.
 
 ## The Mathematics
 
@@ -84,10 +85,10 @@ truncated power series, which is inaccurate near α = 1 on periodic
 structures.
 
 The value at α = 1 is the exact limit of PageRank as α → 1. If the graph has
-a terminal component other than a lone dangling node, the limit is supported
-exactly on such components: each receives the probability that a walk from
-the uniform distribution is absorbed into it, spread according to its
-stationary distribution, and every other node, including dangling ones, gets
-zero. If instead every terminal component is a dangling node, the walk
-restarts from them, and the limit is the stationary distribution of the walk,
-which is positive on every node.
+sinks, the limit is supported exactly on them: each sink receives the
+probability that a walk from the uniform distribution is absorbed into it,
+spread according to its stationary distribution, and every other node,
+including dangling ones, gets zero. If instead the graph has no sink, every
+terminal component is a dangling node, the walk restarts from them, and the
+limit is the stationary distribution of the walk, which is positive on every
+node.

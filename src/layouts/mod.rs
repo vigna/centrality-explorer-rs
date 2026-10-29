@@ -141,8 +141,8 @@ pub fn components(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
         }
     }
 
-    // Terminal components (no arc leaving them, as in the shading) go in
-    // the rightmost column.
+    // Terminal components (no arc leaving them, including dangling nodes)
+    // go in the rightmost column.
     let is_terminal = |c: usize| {
         comps[c]
             .iter()

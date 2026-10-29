@@ -13,8 +13,8 @@
 - Node colors shared with their curves, node sizes showing the PageRank at
   the current α, and faded curves from before the last edit.
 
-- Shading of the terminal strongly connected components, and marking of
-  dangling nodes.
+- Shading of sinks (terminal strongly connected components other than lone
+  dangling nodes), and marking of dangling nodes.
 
 - Directed Chung–Lu random graphs with power-law degrees.
 
