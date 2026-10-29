@@ -9,7 +9,7 @@ families:
 |---|---|---|
 | Damped spectral | PageRank, Katz's index | α ∈ [0 . . 1] for PageRank, βρ ∈ [0 . . 1] for Katz's index |
 | Power method | Seeley's index, eigenvector centrality | The iteration *k* = 0, 1, …, 50 |
-| Geometric | Closeness, harmonic centrality, betweenness | None: the curves are horizontal lines |
+| Geometric and path-based | Closeness, harmonic centrality, betweenness | None: the curves are horizontal lines |
 
 The central picture is the plot of the score of each node against the
 parameter of the centrality. When an edit closes or opens a sink, the
@@ -90,11 +90,12 @@ score.
   shared by the two centralities; node sizes show the iterate at its *k*.
 - Seeley's index shows the same hulls and dashed outlines as PageRank, and
   eigenvector centrality the same hulls as Katz's index.
-- If the iterates of eigenvector centrality vanish, as they do on every
-  graph without cycles (self-loops included), the curves stop at the last
-  nonzero iterate, a note on the plot (“1·*A*ᵏ = 0 for *k* ≥ …”) says from
-  which iteration on, and from that iteration on all nodes have the minimum
-  size.
+- If the iterates of eigenvector centrality vanish within the plotted
+  iterations, as they do on every graph without cycles (self-loops
+  included) whose longest path has fewer than 50 arcs, the curves stop at
+  the last nonzero iterate, a note on the plot (“1·*A*ᵏ = 0 for *k* ≥ …”)
+  says from which iteration on, and from that iteration on all nodes have
+  the minimum size.
 
 ### Closeness, Harmonic Centrality, and Betweenness
 
@@ -165,10 +166,12 @@ walk on the graph: a node with *d* > 0 successors moves to each of them with
 probability 1/*d*, and a dangling node moves to every node with probability
 1/*n*.
 
-Every centrality is oriented by incoming paths: a node is central if it is
-reached. Thus, spectral scores are row vectors multiplied on the right by *A*
-or *P*, and geometric scores use the distances *d*(*y*, *x*) from the other
-nodes *y* to *x*.
+Every centrality except betweenness is oriented by incoming paths: a node
+is central if it is reached. Thus, spectral scores are row vectors multiplied
+on the right by *A* or *P*, and closeness and harmonic centrality use the
+distances *d*(*y*, *x*) from the other nodes *y* to *x*. Betweenness counts
+the shortest paths passing through a node, and does not change if all arcs
+are reversed.
 
 Every score vector shown, in the plot and in node sizes, is normalized to
 sum to 1, so it shows the share of each node in the total score. The only
@@ -208,8 +211,9 @@ uniform, like PageRank at α = 0. The curves are computed exactly, by solving
 
 If ρ > 0, the x-axis is βρ ∈ [0 . . 1], that is, β as a fraction of its
 range [0 . . 1/ρ), so that the axis does not change when an edit changes ρ,
-and the curves from before the edit line up. When no two cycles share a
-node, for example when there is a single cycle, ρ = 1, and βρ = β.
+and the curves from before the edit line up. When the graph has cycles but
+no two of them share a node, for example when there is a single cycle, ρ = 1,
+and βρ = β.
 
 If ρ = 0, that is, if the graph has no cycles (self-loops included), *A* is
 nilpotent, the sum is finite, and every β is allowed. There is no natural
@@ -230,9 +234,10 @@ The limit is supported exactly on the dominant classes that end a chain of ν
 dominant classes, and on the nodes they reach. In particular, when dominant
 classes are chained (ν > 1), the upstream ones get zero: on a ⇄ b → c ⇄ d,
 both cycles have spectral radius 1 = ρ, ν = 2, and the limit is ½ on c and d
-and zero on a and b. The nodes reached by the dominant classes get a
-positive limit, too: on the 2-cycles a ⇄ b and c ⇄ d with arcs b → e and
-d → e, the limit is ⅙ on each of a, b, c, and d, and ⅓ on e.
+and zero on a and b. The nodes reached by the dominant classes that end a
+chain of ν dominant classes get a positive limit, too: on the 2-cycles
+a ⇄ b and c ⇄ d with arcs b → e and d → e, the limit is ⅙ on each of a, b,
+c, and d, and ⅓ on e.
 
 ### Seeley's Index
 
@@ -254,7 +259,7 @@ the oscillation.
 ### Eigenvector Centrality
 
 Eigenvector centrality is a dominant left eigenvector of *A*, that is, a
-nonnegative solution of *x A* = ρ *x*. The plot shows the iterates *x*₀,
+nonnegative nonzero solution of *x A* = ρ *x*. The plot shows the iterates *x*₀,
 *x*₁, …, *x*₅₀ of the power method from the vector of ones, normalized:
 
 *x*₀ = (1/*n*, …, 1/*n*), *x*ₖ₊₁ = *x*ₖ *A* / ‖*x*ₖ *A*‖₁.
@@ -267,9 +272,10 @@ the iterates may also vanish, oscillate, or converge slowly:
 - If the graph has no cycles (self-loops included), that is, if ρ = 0, the
   iterates vanish: if the longest path has length *L* (necessarily less
   than *n*), then **1** *A*ᵏ = 0 for *k* > *L*. All entries are nonnegative,
-  so there is no cancellation, and vanishing is detected exactly. The curves
-  stop at *x*<sub>*L*</sub>, and the note on the plot reads
-  “1·*A*ᵏ = 0 for *k* ≥ *L* + 1”, with the value of *L* + 1.
+  so there is no cancellation, and vanishing is detected exactly. If
+  *L* < 50, the curves stop at *x*<sub>*L*</sub>, and the note on the plot
+  reads “1·*A*ᵏ = 0 for *k* ≥ *L* + 1”, with the value of *L* + 1;
+  otherwise, the curves run to *k* = 50, with no note.
 - On periodic structures the iterates can oscillate forever: on an
   undirected star they alternate between the uniform vector and the vector
   with ½ on the center and the other half split evenly among the leaves.
@@ -281,9 +287,10 @@ the iterates may also vanish, oscillate, or converge slowly:
 ### Closeness, Harmonic Centrality, and Betweenness
 
 These follow Paolo Boldi and Sebastiano Vigna, *Axioms for Centrality*,
-Internet Mathematics, 2014, with the distance *d*(*y*, *x*) (the length of a
-shortest path from *y* to *x*, or ∞ if there is none) measured towards *x*,
-so that, as for the other centralities, a node is central if it is reached:
+Internet Mathematics, 2014. For closeness and harmonic centrality, the
+distance *d*(*y*, *x*) (the length of a shortest path from *y* to *x*, or ∞
+if there is none) is measured towards *x*, so that, as for the spectral
+centralities, a node is central if it is reached.
 
 - The closeness of *x* is 1 / Σ *d*(*y*, *x*), where the sum is over the
   nodes *y* such that 0 < *d*(*y*, *x*) < ∞, and 0 if no other node reaches

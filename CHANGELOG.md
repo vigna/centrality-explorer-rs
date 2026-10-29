@@ -8,7 +8,7 @@
   or with Cmd-Alt-1 to Cmd-Alt-7, in three families: Katz's index, with its
   exact limit as βρ → 1 (damped spectral); Seeley's index and eigenvector
   centrality (power method); and closeness, harmonic centrality, and
-  betweenness (geometric).
+  betweenness (geometric and path-based).
 
 - Plots of the iterates of the power methods against the iteration *k*,
   showing oscillations on periodic structures, with a note when the
