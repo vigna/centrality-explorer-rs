@@ -72,9 +72,9 @@ impl Chain {
 /// Returns the PageRank vector of a chain with damping factor `alpha` and
 /// uniform preference vector.
 ///
-/// For α < 1 the result solves (*I* − α *P*ᵀ) **x** = (1 − α) **v**, where
-/// **v** is the uniform distribution; for α = 1 it is the limit computed by
-/// [`limit`]. It always sums to one.
+/// For α < 1 the result solves (*I* − α *P*<sup>*T*</sup>) **x** = (1 − α)
+/// **v**, where **v** is the uniform distribution; for α = 1 it is the limit
+/// computed by [`limit`]. It always sums to one.
 pub fn pagerank(chain: &Chain, alpha: f64) -> Vec<f64> {
     debug_assert!((0.0..=1.0).contains(&alpha), "alpha must be in [0, 1]");
     if alpha >= 1.0 {
@@ -120,11 +120,12 @@ pub fn terminal_components(chain: &Chain) -> Vec<Vec<usize>> {
 
 /// Returns the limit of the PageRank vector as α → 1.
 ///
-/// The limit is Σ_C *a*_C **π**_C, where C ranges over the
-/// [terminal components](terminal_components), **π**_C is the stationary
-/// distribution of the chain restricted to C, and *a*_C is the probability
-/// that a walk starting from the uniform distribution is eventually absorbed
-/// into C. It is supported exactly on the terminal components.
+/// The limit is Σ<sub>*C*</sub> *a*<sub>*C*</sub> **π**<sub>*C*</sub>, where
+/// *C* ranges over the [terminal components](terminal_components),
+/// **π**<sub>*C*</sub> is the stationary distribution of the chain restricted
+/// to *C*, and *a*<sub>*C*</sub> is the probability that a walk starting from
+/// the uniform distribution is eventually absorbed into *C*. It is supported
+/// exactly on the terminal components.
 pub fn limit(chain: &Chain) -> Vec<f64> {
     let n = chain.len();
     let p = chain.transition();

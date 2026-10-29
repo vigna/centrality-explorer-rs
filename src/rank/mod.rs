@@ -206,7 +206,8 @@ pub struct Ranking {
     /// eigenvector centrality; `None` otherwise.
     pub rho: Option<f64>,
     /// For eigenvector centrality, the first iteration *k* such that **1**
-    /// *A*ᵏ = 0, if *k* ≤ [`ITERATIONS`]; the curves stop at *k* − 1.
+    /// *A*<sup>*k*</sup> = 0, if *k* ≤ [`ITERATIONS`]; the curves stop at *k*
+    /// − 1.
     pub vanished: Option<usize>,
     /// What [`scores`](Self::scores) needs besides the curves.
     exact: Exact,
@@ -467,12 +468,12 @@ pub(crate) mod tests {
         g
     }
 
-    /// a → b → c → a, c → d, d ⇄ e.
+    /// *a* → *b* → *c* → *a*, *c* → *d*, *d* ⇄ *e*.
     fn lecture_graph() -> Graph {
         graph(true, 5, &[(0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 3)])
     }
 
-    /// a → b → c.
+    /// *a* → *b* → *c*.
     fn path_graph() -> Graph {
         graph(true, 3, &[(0, 1), (1, 2)])
     }

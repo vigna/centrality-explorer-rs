@@ -151,9 +151,8 @@ fn x_tick_label(axis: Axis, x: f64) -> String {
 }
 
 /// Returns the note on iterates that vanish from iteration `v` on,
-/// "1·Aᵏ = 0 for k ≥ `v`", with *A* and *k* in italics, on the given
-/// background; the exponent is raised by layout, as the default font has no
-/// superscript *k*.
+/// “1·*A*<sup>*k*</sup> = 0 for *k* ≥ `v`”, on the given background; the
+/// exponent is raised by layout, as the default font has no superscript *k*.
 fn vanished_note(v: usize, background: Color32) -> LayoutJob {
     let normal = TextFormat {
         background,
@@ -377,10 +376,10 @@ mod tests {
     use crate::graph::Graph;
     use crate::rank::{Centrality, ITERATIONS};
 
-    /// Returns eigenvector centrality on the 4-cycle a → b → c → d → a, and
-    /// on the same graph after deleting d → a, that is, on the path a → b →
-    /// c → d, where the iterates vanish at *k* = 4, and the last one, at
-    /// *k* = 3, is 1 on d.
+    /// Returns eigenvector centrality on the 4-cycle *a* → *b* → *c* → *d* →
+    /// *a*, and on the same graph after deleting *d* → *a*, that is, on the
+    /// path *a* → *b* → *c* → *d*, where the iterates vanish at *k* = 4, and
+    /// the last one, at *k* = 3, is 1 on *d*.
     fn cycle_and_path() -> (Ranking, Ranking) {
         let mut g = Graph::new(true);
         let ids: Vec<_> = (0..4).map(|i| g.add_node([i as f32, 0.0])).collect();
