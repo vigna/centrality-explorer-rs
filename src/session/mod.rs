@@ -474,6 +474,34 @@ mod tests {
     }
 
     #[test]
+    fn test_ghost_across_switches_undo_redo() {
+        let (mut s, a, b) = two_nodes();
+        let no_arc = s.graph().clone();
+        let arc = with_arc(&s, a, b);
+        // The ghost is the current centrality on the other graph
+        let check = |s: &Session, other: &Graph| {
+            let c = s.centrality();
+            assert_eq!(s.ranking().centrality, c);
+            let ghost = s.ghost().unwrap();
+            assert_eq!(ghost.centrality, c);
+            assert_eq!(
+                ghost.curve(a).unwrap(),
+                Ranking::new(other, c).curve(a).unwrap()
+            );
+        };
+        s.commit(arc.clone());
+        check(&s, &no_arc);
+        s.set_centrality(Centrality::Katz);
+        check(&s, &no_arc);
+        assert!(s.undo());
+        check(&s, &arc);
+        s.set_centrality(Centrality::Eigenvector);
+        check(&s, &arc);
+        assert!(s.redo());
+        check(&s, &no_arc);
+    }
+
+    #[test]
     fn test_ghost_with_deleted_node_survives_switch() {
         let (mut s, a, _) = two_nodes();
         let mut g = s.graph().clone();
