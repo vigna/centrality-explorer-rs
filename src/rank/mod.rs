@@ -7,7 +7,7 @@
 mod lu;
 mod scc;
 
-pub use scc::sccs;
+pub use scc::{sccs, terminal_sccs};
 
 use crate::graph::{Graph, NodeId};
 
@@ -105,8 +105,13 @@ pub fn pagerank(chain: &Chain, alpha: f64) -> Vec<f64> {
 /// Returns the terminal strongly connected components of the chain actually
 /// walked, in which dangling nodes link to every node.
 ///
+/// These are the components on which the [`limit`] is supported. They
+/// differ from the [terminal components of the graph](terminal_sccs) only
+/// because of dangling nodes: a lone dangling node is never terminal for the
+/// walk.
+///
 /// Each component is sorted, and components are sorted by their smallest
-/// node. A lone dangling node is never terminal.
+/// node.
 pub fn terminal_components(chain: &Chain) -> Vec<Vec<usize>> {
     let n = chain.len();
     let patched: Vec<Vec<usize>> = (0..n)
@@ -118,25 +123,7 @@ pub fn terminal_components(chain: &Chain) -> Vec<Vec<usize>> {
             }
         })
         .collect();
-    let components = sccs(&patched);
-    let mut component_of = vec![0; n];
-    for (c, component) in components.iter().enumerate() {
-        for &v in component {
-            component_of[v] = c;
-        }
-    }
-    let mut terminal: Vec<Vec<usize>> = components
-        .iter()
-        .enumerate()
-        .filter(|&(c, component)| {
-            component
-                .iter()
-                .all(|&v| patched[v].iter().all(|&w| component_of[w] == c))
-        })
-        .map(|(_, component)| component.clone())
-        .collect();
-    terminal.sort_unstable_by_key(|component| component[0]);
-    terminal
+    terminal_sccs(&patched)
 }
 
 /// Returns the limit of the PageRank vector as α → 1.
@@ -210,8 +197,8 @@ pub struct Ranking {
     pub alphas: Vec<f64>,
     /// `curves[i][k]` is the PageRank of `ids[i]` at `alphas[k]`.
     pub curves: Vec<Vec<f64>>,
-    /// The terminal components of the chain actually walked (see
-    /// [`terminal_components`]).
+    /// The terminal components of the graph, that is, the strongly connected
+    /// components with no arc leaving them (see [`terminal_sccs`]).
     pub terminal: Vec<Vec<NodeId>>,
     /// The dangling nodes.
     pub dangling: Vec<NodeId>,
@@ -231,7 +218,7 @@ impl Ranking {
                 curve.push(x);
             }
         }
-        let terminal = terminal_components(&chain)
+        let terminal = terminal_sccs(chain.successors())
             .into_iter()
             .map(|component| component.into_iter().map(|v| ids[v]).collect())
             .collect();
@@ -364,6 +351,33 @@ pub(crate) mod tests {
             terminal_components(&example_before()),
             vec![vec![0, 1, 2, 3, 4]]
         );
+    }
+
+    #[test]
+    fn test_terminal_sccs() {
+        let chain = Chain::new(vec![vec![1], vec![2], vec![]]); // a → b → c
+        assert_eq!(terminal_sccs(chain.successors()), vec![vec![2]]);
+        assert_eq!(terminal_sccs(example_before().successors()), vec![vec![4]]);
+        assert_eq!(
+            terminal_sccs(example_after().successors()),
+            vec![vec![3, 4]]
+        );
+        let path = Chain::new(vec![vec![1], vec![0, 2], vec![1, 3], vec![2]]);
+        assert_eq!(terminal_sccs(path.successors()), vec![vec![0, 1, 2, 3]]);
+        let two_sinks = Chain::new(vec![vec![1, 2], vec![], vec![2]]);
+        assert_eq!(
+            terminal_sccs(two_sinks.successors()),
+            vec![vec![1], vec![2]]
+        );
+    }
+
+    #[test]
+    fn test_ranking_terminal_is_graph_terminal() {
+        let mut g = Graph::new(true);
+        let ids: Vec<_> = (0..3).map(|i| g.add_node([i as f32, 0.0])).collect();
+        g.add_arc(ids[0], ids[1]);
+        g.add_arc(ids[1], ids[2]);
+        assert_eq!(Ranking::new(&g).terminal, vec![vec![ids[2]]]);
     }
 
     #[test]

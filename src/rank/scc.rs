@@ -70,3 +70,31 @@ pub fn sccs(succ: &[Vec<usize>]) -> Vec<Vec<usize>> {
     }
     components
 }
+
+/// Returns the terminal strongly connected components of a graph given by
+/// successor lists, that is, the components with no arc leaving them; in
+/// particular, a node without successors is a terminal component by itself.
+///
+/// Each component is sorted, and components are sorted by their smallest
+/// node.
+pub fn terminal_sccs(succ: &[Vec<usize>]) -> Vec<Vec<usize>> {
+    let components = sccs(succ);
+    let mut component_of = vec![0; succ.len()];
+    for (c, component) in components.iter().enumerate() {
+        for &v in component {
+            component_of[v] = c;
+        }
+    }
+    let mut terminal: Vec<Vec<usize>> = components
+        .iter()
+        .enumerate()
+        .filter(|&(c, component)| {
+            component
+                .iter()
+                .all(|&v| succ[v].iter().all(|&w| component_of[w] == c))
+        })
+        .map(|(_, component)| component.clone())
+        .collect();
+    terminal.sort_unstable_by_key(|component| component[0]);
+    terminal
+}

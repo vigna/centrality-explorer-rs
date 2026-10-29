@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use crate::graph::Graph;
-use crate::rank::{Chain, sccs, terminal_components};
+use crate::rank::sccs;
 
 /// The minimum distance between a node center and the canvas border.
 pub const MARGIN: f32 = 60.0;
@@ -112,14 +112,12 @@ pub fn force(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
 }
 
 /// Lays out the strongly connected components left to right, with the
-/// terminal components of the chain actually walked in the rightmost column.
+/// terminal components (those with no arc leaving them, including dangling
+/// nodes) in the rightmost column.
 ///
-/// Components are placed in columns given by their longest path from a
-/// source in the condensation of the graph as drawn. If there are terminal
-/// components that do not cover all nodes, dangling nodes go in the column
-/// just left of the terminal ones, so that the layout agrees with the
-/// terminal-component shading. The nodes of a component lie on a small
-/// circle.
+/// The other components are placed in columns given by their longest path
+/// from a source in the condensation of the graph. The nodes of a component
+/// lie on a small circle.
 pub fn components(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
     let n = graph.len();
     let succ = graph.successors();
@@ -143,24 +141,21 @@ pub fn components(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
         }
     }
 
-    let chain = Chain::from_graph(graph);
-    let terminal = terminal_components(&chain);
-    if !(terminal.len() == 1 && terminal[0].len() == n) {
-        let mut in_terminal = vec![false; n];
-        for &v in terminal.iter().flatten() {
-            in_terminal[v] = true;
-        }
-        let is_terminal = |c: usize| in_terminal[comps[c][0]];
-        let is_dangling = |c: usize| comps[c].len() == 1 && chain.is_dangling(comps[c][0]);
-        let others = (0..comps.len()).filter(|&c| !is_terminal(c) && !is_dangling(c));
-        let m = others.map(|c| col[c] as isize).max().unwrap_or(-1);
-        let any_dangling = (0..comps.len()).any(is_dangling);
-        for (c, column) in col.iter_mut().enumerate() {
-            if is_dangling(c) {
-                *column = (m + 1) as usize;
-            } else if is_terminal(c) {
-                *column = (m + 1 + any_dangling as isize) as usize;
-            }
+    // Terminal components (no arc leaving them, as in the shading) go in
+    // the rightmost column.
+    let is_terminal = |c: usize| {
+        comps[c]
+            .iter()
+            .all(|&v| succ[v].iter().all(|&w| comp_of[w] == c))
+    };
+    let last = (0..comps.len())
+        .filter(|&c| !is_terminal(c))
+        .map(|c| col[c] + 1)
+        .max()
+        .unwrap_or(0);
+    for (c, column) in col.iter_mut().enumerate() {
+        if is_terminal(c) {
+            *column = last;
         }
     }
 
@@ -310,11 +305,13 @@ mod tests {
     }
 
     #[test]
-    fn test_components_dangling_left_of_terminal() {
-        // a→b→c (c dangling), a→d, d↔e closed
+    fn test_components_terminal_column() {
+        // a→b→c (c dangling, hence terminal), a→d, d↔e closed
         let (g, _) = graph(5, &[(0, 1), (1, 2), (0, 3), (3, 4), (4, 3)]);
         let p = components(&g, SIZE);
-        assert!(p[1][0] < p[2][0] && p[2][0] < p[3][0], "{p:?}");
+        assert!(p[1][0] < p[2][0], "{p:?}");
+        assert!((p[2][0] - p[3][0]).abs() < 1e-3, "{p:?}");
+        assert!((p[3][0] - p[4][0]).abs() < 1e-3, "{p:?}");
     }
 
     #[test]

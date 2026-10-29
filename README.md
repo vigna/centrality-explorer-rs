@@ -31,8 +31,8 @@ not run on an older one.
   curve; node labels at the right end of the plot name the curves.
 - After each edit, the curves from before the edit remain visible as faded
   dashed lines, until the next edit.
-- Shaded hulls mark the terminal strongly connected components of the walk
-  (see below).
+- Shaded hulls mark the terminal strongly connected components: groups of
+  nodes with no edge leaving them (a dangling node is one by itself).
 - Nodes with a dashed outline are dangling: they have no outgoing edges, so
   the walk jumps from them to a node chosen uniformly at random.
 
@@ -72,8 +72,8 @@ quick way to show the same graph before and after an edit.
 
 Random graphs follow the directed Chung–Lu model, whose in-degrees and
 out-degrees follow a power law. Sparse random graphs often have no closed
-component containing a cycle, in which case the whole graph is a single
-terminal component of the walk; add the missing structure by hand.
+component containing a cycle, in which case PageRank at α = 1 vanishes on
+no node (see below); add the missing structure by hand.
 
 ## The Mathematics
 
@@ -83,8 +83,11 @@ uniform. For α < 1 the curves are computed exactly, by solving
 truncated power series, which is inaccurate near α = 1 on periodic
 structures.
 
-The value at α = 1 is the exact limit of PageRank as α → 1. It is supported
-exactly on the terminal strongly connected components of the walk: each
-terminal component receives the probability that a walk from the uniform
-distribution is absorbed into it, spread according to the stationary
-distribution of the component. Every other node gets zero.
+The value at α = 1 is the exact limit of PageRank as α → 1. If the graph has
+a terminal component other than a lone dangling node, the limit is supported
+exactly on such components: each receives the probability that a walk from
+the uniform distribution is absorbed into it, spread according to its
+stationary distribution, and every other node, including dangling ones, gets
+zero. If instead every terminal component is a dangling node, the walk
+restarts from them, and the limit is the stationary distribution of the walk,
+which is positive on every node.

@@ -141,7 +141,8 @@ node links to every node. Terminal components must therefore be computed on
 the chain actually walked (the patched one): a lone dangling node is never a
 terminal component, and a graph whose only "sinks" are dangling nodes may have
 a single, large terminal component. The terminal-component shading in the UI
-(below) shows the components of this patched chain.
+(below) does **not** use the patched chain: it shows the terminal components
+of the graph as drawn (user's decision, see below).
 
 ### Tests for the math
 
@@ -214,11 +215,16 @@ change, and the suddenness is the point.
 
 ### Terminal components
 
-The canvas shades each **terminal strongly connected component** of the
-patched chain (see the math section), recomputed after every edit, e.g., as a
-soft rounded hull drawn behind the component's nodes, labeled "terminal" or
-similar. This puts the cause (a component closing) next to the effect (curves
-splitting near α = 1). Non-terminal components are not shaded.
+The canvas shades each **terminal strongly connected component of the graph
+as drawn**: a component with no arc leaving it, so that a dangling node is a
+terminal component by itself. It is recomputed after every edit and drawn as
+a soft rounded hull behind the component's nodes, labeled "terminal". This
+puts the cause (a component closing) next to the effect (curves splitting
+near α = 1). Non-terminal components are not shaded.
+
+(User's decision after trying the first version, which shaded the terminal
+components of the patched chain: on a → b → c it shaded everything, whereas
+only c is terminal.)
 
 **Dangling nodes** are marked visibly (e.g., a dashed outline), since they
 behave as if linked to every node.
@@ -310,15 +316,12 @@ All are undoable.
 
 - **Force-directed** (e.g., Fruchterman–Reingold), the "tidy up" command.
 - **Circle.**
-- **Components:** the layout must agree with the terminal-component shading.
-  The terminal components of the patched chain (the shaded ones) go in the
-  rightmost column. All other nodes are arranged left to right by the
-  condensation DAG of the graph **as drawn** (by longest path from sources);
-  dangling nodes, which are sinks in the drawn graph but not terminal in the
-  patched chain, go in the column just left of the terminal column. Nodes
-  within a component are arranged compactly (e.g., on a small circle). When
-  the whole graph is a single terminal component of the patched chain, the
-  ordering still follows the drawn graph's condensation DAG. (Designer's call.)
+- **Components:** the layout agrees with the terminal-component shading. The
+  terminal components of the graph (the shaded ones, including dangling
+  nodes) go in the rightmost column. All other components are arranged left
+  to right by the condensation DAG of the graph (by longest path from
+  sources). Nodes within a component are arranged compactly, on a small
+  circle.
 
   Useful fact for the implementation: if the drawn graph has at least one
   closed component containing a cycle (or a self-loop), every dangling node is
