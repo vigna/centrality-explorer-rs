@@ -443,3 +443,38 @@ fn test_render_centralities() {
             .unwrap();
     }
 }
+
+/// Renders eigenvector centrality on the 4-cycle a → b → c → d → a after
+/// deleting d → a, so that the iterates vanish at k = 4, offscreen to
+/// `target/screenshots/` for visual inspection: the end labels must sit at 0,
+/// next to the note. Run with `cargo test --test test_ui -- --ignored`.
+#[test]
+#[ignore = "needs a GPU"]
+fn test_render_eigenvector_vanishing() {
+    let mut h = wgpu_harness();
+    h.run();
+    h.state_mut()
+        .session_mut()
+        .set_centrality(Centrality::Eigenvector);
+    let mut g = h.state().session().graph().clone();
+    let pos = [
+        [150.0, 150.0],
+        [450.0, 150.0],
+        [450.0, 450.0],
+        [150.0, 450.0],
+    ];
+    let ids: Vec<_> = pos.iter().map(|&p| g.add_node(p)).collect();
+    for (s, t) in [(0, 1), (1, 2), (2, 3), (3, 0)] {
+        g.add_arc(ids[s], ids[t]);
+    }
+    h.state_mut().session_mut().commit(g.clone());
+    g.remove_arc(ids[3], ids[0]);
+    h.state_mut().session_mut().commit(g);
+    h.run();
+    assert_eq!(h.state().session().ranking().vanished, Some(4));
+    std::fs::create_dir_all("target/screenshots").unwrap();
+    h.render()
+        .unwrap()
+        .save("target/screenshots/eigenvector_vanishing.png")
+        .unwrap();
+}

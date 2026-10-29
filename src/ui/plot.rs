@@ -67,6 +67,25 @@ pub fn group_end_labels(values: &[(usize, f64)], min_gap: f64) -> Vec<(f64, Vec<
         .collect()
 }
 
+/// Returns the values of the end labels of the curves of a ranking, by
+/// curve index: the last sample of each curve or, if the iterates
+/// [vanish](Ranking::vanished), 0, as the scores at the right end of the
+/// axis.
+fn end_values(ranking: &Ranking) -> Vec<(usize, f64)> {
+    ranking
+        .curves
+        .iter()
+        .enumerate()
+        .map(|(i, curve)| {
+            let end = match ranking.vanished {
+                Some(_) => 0.0,
+                None => *curve.last().expect("curves are not empty"),
+            };
+            (i, end)
+        })
+        .collect()
+}
+
 /// Returns the value of a curve sampled at `xs` at `x`, interpolating
 /// linearly between samples, and extending the first and last samples
 /// beyond the ends (a curve with a single sample is constant).
@@ -82,12 +101,23 @@ fn value_at(xs: &[f64], curve: &[f64], x: f64) -> f64 {
 
 /// Returns the index of the curve whose value at `x` is closest to `y`, if
 /// it is within `tol`.
+///
+/// If the iterates [vanish](Ranking::vanished), the value of every curve
+/// beyond its last sample is 0, as the scores there.
 pub fn nearest_curve(ranking: &Ranking, x: f64, y: f64, tol: f64) -> Option<usize> {
+    let vanished = ranking.vanished.is_some() && ranking.xs.last().is_some_and(|&last| x > last);
     ranking
         .curves
         .iter()
         .enumerate()
-        .map(|(i, curve)| (i, (value_at(&ranking.xs, curve, x) - y).abs()))
+        .map(|(i, curve)| {
+            let value = if vanished {
+                0.0
+            } else {
+                value_at(&ranking.xs, curve, x)
+            };
+            (i, (value - y).abs())
+        })
         .filter(|&(_, d)| d <= tol)
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(i, _)| i)
@@ -288,12 +318,7 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
                     );
                 }
             }
-            let ends: Vec<(usize, f64)> = ranking
-                .curves
-                .iter()
-                .enumerate()
-                .map(|(i, curve)| (i, *curve.last().expect("curves are not empty")))
-                .collect();
+            let ends = end_values(ranking);
             for (value, members) in group_end_labels(&ends, LABEL_GAP / px_per_unit) {
                 let mut job = LayoutJob::default();
                 for (k, &i) in members.iter().enumerate() {
@@ -350,7 +375,22 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
 mod tests {
     use super::*;
     use crate::graph::Graph;
-    use crate::rank::Centrality;
+    use crate::rank::{Centrality, ITERATIONS};
+
+    /// Returns eigenvector centrality on the 4-cycle a → b → c → d → a, and
+    /// on the same graph after deleting d → a, that is, on the path a → b →
+    /// c → d, where the iterates vanish at *k* = 4, and the last one, at
+    /// *k* = 3, is 1 on d.
+    fn cycle_and_path() -> (Ranking, Ranking) {
+        let mut g = Graph::new(true);
+        let ids: Vec<_> = (0..4).map(|i| g.add_node([i as f32, 0.0])).collect();
+        for (s, t) in [(0, 1), (1, 2), (2, 3), (3, 0)] {
+            g.add_arc(ids[s], ids[t]);
+        }
+        let cycle = Ranking::new(&g, Centrality::Eigenvector);
+        g.remove_arc(ids[3], ids[0]);
+        (cycle, Ranking::new(&g, Centrality::Eigenvector))
+    }
 
     #[test]
     fn test_nice_ceiling() {
@@ -384,5 +424,42 @@ mod tests {
         let r = Ranking::new(&g, Centrality::PageRank);
         assert_eq!(nearest_curve(&r, 1.0, 0.0, 0.01).map(|i| i < 3), Some(true));
         assert_eq!(nearest_curve(&r, 0.85, 0.9, 0.05), None);
+    }
+
+    #[test]
+    fn test_end_values() {
+        let (cycle, path) = cycle_and_path();
+        // On the cycle, the iterates are uniform, and the labels sit at the
+        // last sample
+        assert_eq!(cycle.vanished, None);
+        assert_eq!(
+            end_values(&cycle),
+            vec![(0, 0.25), (1, 0.25), (2, 0.25), (3, 0.25)]
+        );
+        // On the path, the iterates vanish at k = 4: the labels sit at 0,
+        // with the dots at k = K, not at the last sample (1 on d)
+        assert_eq!(path.vanished, Some(4));
+        assert_eq!(path.curves[3].last(), Some(&1.0));
+        assert_eq!(
+            end_values(&path),
+            vec![(0, 0.0), (1, 0.0), (2, 0.0), (3, 0.0)]
+        );
+        let at_k: Vec<_> = path
+            .scores(ITERATIONS as f64)
+            .into_iter()
+            .enumerate()
+            .collect();
+        assert_eq!(end_values(&path), at_k);
+    }
+
+    #[test]
+    fn test_nearest_curve_past_vanishing() {
+        let (_, path) = cycle_and_path();
+        // At the last sample, k = 3, the curve of d is at 1
+        assert_eq!(nearest_curve(&path, 3.0, 1.0, 0.01), Some(3));
+        // Past it, no curve is drawn, and every score is 0
+        assert_eq!(nearest_curve(&path, 3.5, 1.0, 0.01), None);
+        assert_eq!(nearest_curve(&path, ITERATIONS as f64, 1.0, 0.01), None);
+        assert!(nearest_curve(&path, ITERATIONS as f64, 0.0, 0.01).is_some());
     }
 }
