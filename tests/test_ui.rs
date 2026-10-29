@@ -381,19 +381,22 @@ fn test_render_zoomed_components() {
 #[test]
 fn test_centrality_shortcuts() {
     let (mut h, _, _) = two_node_app();
-    h.key_press_modifiers(
-        egui::Modifiers::COMMAND | egui::Modifiers::ALT,
-        egui::Key::Num2,
-    );
-    h.run();
-    assert_eq!(h.state().session().centrality(), Centrality::Katz);
+    let cmd_alt = egui::Modifiers::COMMAND | egui::Modifiers::ALT;
+    // Menu order: geometric, spectral (eigenvector), spectral (damped sum)
+    for (key, c) in [
+        (egui::Key::Num7, Centrality::Katz),
+        (egui::Key::Num6, Centrality::PageRank),
+        (egui::Key::Num5, Centrality::Eigenvector),
+        (egui::Key::Num4, Centrality::Seeley),
+    ] {
+        h.key_press_modifiers(cmd_alt, key);
+        h.run();
+        assert_eq!(h.state().session().centrality(), c);
+    }
     let before = h.state().session().graph().clone();
-    h.key_press_modifiers(
-        egui::Modifiers::COMMAND | egui::Modifiers::ALT,
-        egui::Key::Num1,
-    );
+    h.key_press_modifiers(cmd_alt, egui::Key::Num1);
     h.run();
-    assert_eq!(h.state().session().centrality(), Centrality::PageRank);
+    assert_eq!(h.state().session().centrality(), Centrality::Closeness);
     // Cmd-Alt-1 is not taken for Cmd-1, the force-directed layout
     assert_eq!(h.state().session().graph(), &before);
 }

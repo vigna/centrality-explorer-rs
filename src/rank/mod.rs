@@ -47,17 +47,18 @@ pub enum Centrality {
 }
 
 impl Centrality {
-    /// All centralities, in menu order, that is, by family: damped spectral
-    /// (PageRank, Katz's index), power method (Seeley's index, eigenvector
-    /// centrality), and geometric (closeness, harmonic, betweenness).
+    /// All centralities, in menu order, that is, by family: geometric
+    /// (closeness, harmonic, betweenness), spectral by eigenvector (Seeley's
+    /// index, eigenvector centrality), and spectral by damped sum (PageRank,
+    /// Katz's index).
     pub const ALL: [Self; 7] = [
-        Self::PageRank,
-        Self::Katz,
-        Self::Seeley,
-        Self::Eigenvector,
         Self::Closeness,
         Self::Harmonic,
         Self::Betweenness,
+        Self::Seeley,
+        Self::Eigenvector,
+        Self::PageRank,
+        Self::Katz,
     ];
 
     /// Returns the name of the centrality, for display.

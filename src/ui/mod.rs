@@ -424,7 +424,7 @@ fn centrality_menu(ui: &mut egui::Ui, current: Centrality) -> Option<Centrality>
         {
             clicked = Some(c);
         }
-        if matches!(c, Centrality::Katz | Centrality::Eigenvector) {
+        if matches!(c, Centrality::Betweenness | Centrality::Eigenvector) {
             ui.separator();
         }
     }
