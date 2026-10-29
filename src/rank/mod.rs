@@ -7,9 +7,11 @@
 mod geometric;
 mod lu;
 mod scc;
+mod spectral;
 
 pub use geometric::{betweenness, closeness, harmonic};
 pub use scc::{sccs, terminal_sccs};
+pub use spectral::{Spectrum, katz};
 
 use crate::graph::{Graph, NodeId};
 
