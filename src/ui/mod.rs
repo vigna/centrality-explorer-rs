@@ -133,9 +133,8 @@ pub struct App {
     hovered: Option<NodeId>,
     /// Whether the canvas or the plot handled the pointer this frame.
     hover_seen: bool,
-    /// The node being dragged, with the offset of the pointer from its
-    /// center and the view frozen for the drag.
-    dragging: Option<(NodeId, egui::Vec2, canvas::View)>,
+    /// The drag in progress, with the view frozen for the drag.
+    dragging: Option<(canvas::Drag, canvas::View)>,
     /// The target and canvas-local position of the last right click.
     context: Option<(Target, [f32; 2])>,
     animation: Option<Animation>,

@@ -9,7 +9,7 @@ families:
 |---|---|---|
 | Damped spectral | PageRank, Katz's index | α ∈ [0 . . 1] for PageRank, βρ ∈ [0 . . 1] for Katz's index |
 | Power method | Seeley's index, eigenvector centrality | The iteration *k* = 0, 1, …, 50 |
-| Geometric and path-based | Closeness, harmonic centrality, betweenness | None: the curves are horizontal lines |
+| Geometric | Closeness, harmonic centrality, betweenness | None: the curves are horizontal lines |
 
 The central picture is the plot of the score of each node against the
 parameter of the centrality. When an edit closes or opens a sink, the
@@ -223,6 +223,7 @@ cargo test --release --test test_ui -- --ignored test_render_centralities test_r
 | Remove an edge | Click it |
 | Cancel a pending edge | Esc, or click on empty canvas |
 | Move a node | Drag it |
+| Move the whole graph | Drag empty canvas |
 | Rename a node | Type over it; Enter confirms, Esc cancels |
 | Delete a node | Backspace or Delete over it |
 | Self-loops, and everything else | Right-click menu |

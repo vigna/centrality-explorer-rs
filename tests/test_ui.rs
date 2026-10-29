@@ -117,6 +117,29 @@ fn test_canvas_drag_moves_node() {
 }
 
 #[test]
+fn test_canvas_drag_moves_graph() {
+    let (mut h, a, b) = two_node_app();
+    // Nodes at (150, 300) and (400, 300); the drag starts on empty canvas.
+    drag(&mut h, [300.0, 500.0], [340.0, 470.0]);
+    let pos = |h: &Harness<'static, App>, id| h.state().session().graph().node(id).unwrap().pos;
+    for (id, expected) in [(a, [190.0, 270.0]), (b, [440.0, 270.0])] {
+        let p = pos(&h, id);
+        assert!(
+            (p[0] - expected[0]).abs() < 2.0 && (p[1] - expected[1]).abs() < 2.0,
+            "{p:?}"
+        );
+    }
+    // One undo step restores the whole graph.
+    h.state_mut().session_mut().undo();
+    assert_eq!(pos(&h, a), [150.0, 300.0]);
+    assert_eq!(pos(&h, b), [400.0, 300.0]);
+    // Node centers cannot leave the canvas: the leftmost one stops at x = 0.
+    drag(&mut h, [300.0, 500.0], [-500.0, 500.0]);
+    assert!(pos(&h, a)[0].abs() < 2.0, "{:?}", pos(&h, a));
+    assert!((pos(&h, b)[0] - 250.0).abs() < 2.0, "{:?}", pos(&h, b));
+}
+
+#[test]
 fn test_canvas_backspace_deletes_hovered() {
     let (mut h, a, _) = two_node_app();
     hover(&mut h, [150.0, 300.0]);

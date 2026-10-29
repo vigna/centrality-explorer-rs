@@ -102,6 +102,20 @@ impl View {
     }
 }
 
+/// A drag on the canvas.
+pub(crate) enum Drag {
+    /// A node, with the offset of the pointer from its center.
+    Node(NodeId, Vec2),
+    /// The whole graph, started on empty canvas: the press position, the
+    /// stored positions of the nodes, and the bounding box of their displayed
+    /// centers, which must stay on the canvas.
+    Graph {
+        press: Pos2,
+        from: Vec<(NodeId, [f32; 2])>,
+        bounds: egui::Rect,
+    },
+}
+
 /// An arc as drawn.
 struct DrawnArc {
     from: NodeId,
@@ -143,7 +157,7 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
     // during a drag, so that it does not change under the pointer.
     let graph = app.session.graph();
     let view = match app.dragging {
-        Some((_, _, view)) => view,
+        Some((_, view)) => view,
         None => {
             let stored: Vec<[f32; 2]> = graph.nodes().iter().map(|node| node.pos).collect();
             View::fit(&stored, rect.size())
@@ -230,17 +244,49 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
     let local = |p: Pos2| view.to_stored([p.x - origin.x, p.y - origin.y]);
     if response.drag_started_by(egui::PointerButton::Primary)
         && let Some(press) = ui.input(|i| i.pointer.press_origin())
-        && let Some(i) = hit_node(press)
+        && n > 0
     {
-        app.dragging = Some((ids[i], press - positions[i], view));
+        let drag = match hit_node(press) {
+            Some(i) => Drag::Node(ids[i], press - positions[i]),
+            None => Drag::Graph {
+                press,
+                from: graph
+                    .nodes()
+                    .iter()
+                    .map(|node| (node.id, node.pos))
+                    .collect(),
+                bounds: egui::Rect::from_points(&positions),
+            },
+        };
+        app.dragging = Some((drag, view));
         app.session.begin_drag();
     }
-    if let Some((id, offset, _)) = app.dragging {
+    if let Some((drag, _)) = &app.dragging {
         if response.dragged()
             && let Some(p) = response.interact_pointer_pos()
         {
-            let p = (p - offset).clamp(rect.min, rect.max);
-            app.session.drag_to(id, local(p));
+            match drag {
+                &Drag::Node(id, offset) => {
+                    let p = (p - offset).clamp(rect.min, rect.max);
+                    app.session.drag_to(id, local(p));
+                }
+                Drag::Graph {
+                    press,
+                    from,
+                    bounds,
+                } => {
+                    // Clamped so that the centers stay on the canvas.
+                    let shift = |d: f32, lo: f32, hi: f32| d.max(lo.min(0.0)).min(hi.max(0.0));
+                    let d = p - *press;
+                    let d = vec2(
+                        shift(d.x, rect.min.x - bounds.min.x, rect.max.x - bounds.max.x),
+                        shift(d.y, rect.min.y - bounds.min.y, rect.max.y - bounds.max.y),
+                    ) / view.scale;
+                    for &(id, [x, y]) in from {
+                        app.session.drag_to(id, [x + d.x, y + d.y]);
+                    }
+                }
+            }
         }
         if response.drag_stopped() {
             app.session.end_drag();

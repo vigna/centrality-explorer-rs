@@ -8,7 +8,7 @@
   or with Cmd-Alt-1 to Cmd-Alt-7, in three families: Katz's index, with its
   exact limit as βρ → 1 (damped spectral); Seeley's index and eigenvector
   centrality (power method); and closeness, harmonic centrality, and
-  betweenness (geometric and path-based).
+  betweenness (geometric).
 
 - Plots of the iterates of the power methods against the iteration *k*,
   showing oscillations on periodic structures, with a note when the
@@ -25,6 +25,9 @@
   index; files saved by 0.1.0 open with PageRank.
 
 - Nodes whose score is exactly zero have a thicker gray outline.
+
+- Dragging empty canvas moves the whole graph, keeping the nodes on the
+  canvas; it is one undo step, like moving a node.
 
 - An Examples section in the README, with a commented screenshot of each
   centrality.
