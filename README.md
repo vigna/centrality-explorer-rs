@@ -8,9 +8,9 @@ families (for details on the spectral ones, see Sebastiano Vigna,
 
 | Family | Centralities | x-axis of the plot |
 |---|---|---|
-| Geometric | Closeness, harmonic centrality, betweenness | None: the curves are horizontal lines |
-| Spectral (eigenvector) | Eigenvector (Landau) centrality, Seeley's index,  | The iteration *k* = 0, 1, …, 50 of the power method |
-| Spectral (damped sum) | PageRank, Katz's index | α ∈ [0 . . 1] for PageRank, βρ ∈ [0 . . 1] for Katz's index |
+| Geometric | [Closeness](https://en.wikipedia.org/wiki/Closeness_centrality), [harmonic centrality](https://en.wikipedia.org/wiki/Closeness_centrality#In_disconnected_graphs), [betweenness](https://en.wikipedia.org/wiki/Betweenness_centrality) | None: the curves are horizontal lines |
+| Spectral (eigenvector) | [Eigenvector (Landau) centrality](https://en.wikipedia.org/wiki/Eigenvector_centrality), Seeley's index,  | The iteration *k* = 0, 1, …, 50 of the power method |
+| Spectral (damped sum) | [PageRank](https://en.wikipedia.org/wiki/PageRank), [Katz's index](https://en.wikipedia.org/wiki/Katz_centrality) | α ∈ [0 . . 1] for PageRank, βρ ∈ [0 . . 1] for Katz's index |
 
 The central picture is the plot of the score of each node against the
 parameter of the centrality. When an edit closes or opens a sink, the
