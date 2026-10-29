@@ -3,7 +3,7 @@
 A teaching aid to build intuition about PageRank centrality. The instructor
 edits a small directed graph at a projector, and the class watches, in real
 time, how the PageRank of each node changes as a function of the damping
-factor α ∈ [0, 1].
+factor α ∈ [0 . . 1).
 
 The central picture is the plot of the PageRank of each node against α. When
 an edit closes or opens a terminal strongly connected component, the curves
