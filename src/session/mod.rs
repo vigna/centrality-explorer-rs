@@ -2,6 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
+use anyhow::Context;
+
+use crate::files;
 use crate::graph::{Graph, NodeId};
 use crate::rank::Ranking;
 
@@ -174,6 +177,30 @@ impl Session {
             self.redo.clear();
             self.dirty = true;
         }
+    }
+
+    /// Creates a session from a file, with an empty history.
+    pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        let (graph, alpha) = files::load(path)?;
+        Ok(Self::with_graph(graph, alpha, path.to_path_buf()))
+    }
+
+    /// Saves the session to its file.
+    pub fn save(&mut self) -> anyhow::Result<()> {
+        let path = self
+            .path
+            .clone()
+            .context("the session is not associated with a file")?;
+        self.save_as(path)
+    }
+
+    /// Saves the session to a file, which becomes the session's file.
+    pub fn save_as(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let path = path.as_ref();
+        files::save(&self.graph, self.alpha, path)?;
+        self.mark_saved(path.to_path_buf());
+        Ok(())
     }
 
     /// Associates the session with a file and marks it as saved.

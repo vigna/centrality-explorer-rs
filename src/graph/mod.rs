@@ -85,8 +85,6 @@ impl Graph {
     /// Fails on duplicate node identifiers, arcs with unknown endpoints, and
     /// colors not smaller than [`PALETTE_SIZE`]. Duplicate arcs are merged
     /// and, for undirected graphs, missing reverse arcs are added.
-    // Used by the files module (Task 7), which removes this attribute.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn from_parts(
         directed: bool,
         nodes: Vec<Node>,
