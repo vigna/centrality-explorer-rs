@@ -5,14 +5,15 @@
 ### New
 
 - Six new centralities besides PageRank, selectable from the Centrality menu
-  or with Cmd-Alt-1 to Cmd-Alt-7, in three families: Katz's index, with its
-  exact limit as βρ → 1 (damped spectral); Seeley's index and eigenvector
-  centrality (power method); and closeness, harmonic centrality, and
-  betweenness (geometric).
+  or with Cmd-Alt-1 to Cmd-Alt-7, in three families: closeness, harmonic
+  centrality, and betweenness (geometric); Seeley's index and eigenvector
+  centrality (spectral, eigenvector); and Katz's index, with its exact limit
+  as βρ → 1 (spectral, damped sum).
 
-- Plots of the iterates of the power methods against the iteration *k*,
-  showing oscillations on periodic structures, with a note when the
-  iterates of eigenvector centrality vanish.
+- For Seeley's index and eigenvector centrality, plots of the iterates of
+  the power method computing them against the iteration *k*, showing
+  oscillations on periodic structures, with a note when the iterates of
+  eigenvector centrality vanish.
 
 - Shading of the dominant classes for Katz's index and eigenvector
   centrality, and the name of the current centrality over the plot.

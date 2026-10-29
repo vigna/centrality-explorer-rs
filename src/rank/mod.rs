@@ -21,29 +21,29 @@ use crate::graph::{Graph, NodeId};
 /// for PageRank and Katz's index, which adds the right end, 1.
 pub const SAMPLES: usize = 256;
 
-/// The number *K* of iterations of the power methods (Seeley's index and
-/// eigenvector centrality) shown by [`Ranking`].
+/// The number *K* of iterations of the power method computing Seeley's index
+/// and eigenvector centrality shown by [`Ranking`].
 pub const ITERATIONS: usize = 50;
 
 /// A centrality.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Centrality {
-    /// PageRank.
-    #[default]
-    PageRank,
-    /// Katz's index.
-    Katz,
-    /// Seeley's index.
-    Seeley,
-    /// Eigenvector centrality.
-    Eigenvector,
     /// Closeness centrality.
     Closeness,
     /// Harmonic centrality.
     Harmonic,
     /// Betweenness centrality.
     Betweenness,
+    /// Seeley's index.
+    Seeley,
+    /// Eigenvector centrality.
+    Eigenvector,
+    /// PageRank.
+    #[default]
+    PageRank,
+    /// Katz's index.
+    Katz,
 }
 
 impl Centrality {
@@ -85,7 +85,8 @@ pub enum Axis {
     BetaRho,
     /// The parameter β ∈ [0, 1] of Katz's index, when ρ = 0.
     Beta,
-    /// The iteration *k* = 0, 1, …, [`ITERATIONS`] of a power method.
+    /// The iteration *k* = 0, 1, …, [`ITERATIONS`] of the power method
+    /// computing Seeley's index or eigenvector centrality.
     Iteration,
     /// No parameter: the curves are constant.
     Flat,
@@ -174,7 +175,8 @@ pub struct Ranking {
     pub ids: Vec<NodeId>,
     /// The sampled values of the x-axis: *k* / [`SAMPLES`] for 0 ≤ *k* <
     /// [`SAMPLES`], followed by 1, for PageRank and Katz's index; the
-    /// iterations *k* = 0, 1, …, [`ITERATIONS`] for the power methods,
+    /// iterations *k* = 0, 1, …, [`ITERATIONS`] for Seeley's index and
+    /// eigenvector centrality,
     /// stopping before [`vanished`](Self::vanished), if any; and 0 and 1 for
     /// the [flat](Axis::Flat) centralities.
     pub xs: Vec<f64>,

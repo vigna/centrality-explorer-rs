@@ -1,4 +1,9 @@
-//! Power-method iterates for Seeley's index and eigenvector centrality.
+//! Iterates of the power method computing Seeley's index and eigenvector
+//! centrality.
+//!
+//! The centralities are dominant eigenvectors, and the power method is just
+//! one way of computing them: its iterates may vanish, or fail to converge,
+//! even though the eigenvector exists.
 //!
 //! Iterates are row vectors, so mass flows along arcs from a node to its
 //! successors.
