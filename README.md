@@ -23,13 +23,13 @@ The two spectral families are related. Eigenvector centrality and Seeley's index
 are dominant eigenvectors, of the adjacency matrix and of the adjacency matrix
 normalized to a row-stochastic matrix, respectively. Katz's index and PageRank
 are damped sums of the powers of the same matrices, and the damped sums tend to
-the dominant eigenvectors as the damping factor tends to its limit: Katz's index
-tends, as βρ → 1, to eigenvector centrality, and PageRank tends, as α → 1, to
-Seeley's index. The plots of the eigenvectors show the iterates of the power
-method: on periodic structures the iterates can zigzag forever, even though the
-eigenvector exists. Their Cesàro means, however, converge to the eigenvector
-(check Cesàro means, next to the slider). For details, see
-“[*Spectral Ranking*](https://arxiv.org/abs/0912.0238)”.
+the dominant eigenvectors as the damping factor tends to its limit.
+
+The plots of the eigenvectors show the iterates of the power method: on periodic
+structures the iterates can zigzag forever, even though the eigenvector exists.
+Their Cesàro means, however, converge to the eigenvector (check “Cesàro means”,
+next to the slider). For details, see “[*Spectral
+Ranking*](https://arxiv.org/abs/0912.0238)”.
 
 ## Building and Running
 
