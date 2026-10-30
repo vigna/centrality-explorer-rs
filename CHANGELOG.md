@@ -29,9 +29,11 @@
 - Graph → Rotate 90° Clockwise, Flip Horizontally, and Flip Vertically, about
   the center of the graph, animated and undoable.
 
-- A switch between two centralities of the same family shows the previous
-  centrality, on the current graph, as dashed curves, named by a note on the
-  plot, until the next edit or switch.
+- With ℓ1 normalization, a switch of centrality shows the previous centrality,
+  on the current graph, as dashed curves, named by a note on the plot, until
+  the next edit or switch: its curves, if the two centralities belong to the
+  same family, and otherwise horizontal lines at its scores, at the current
+  value of its parameter, if any.
 
 ### Changed
 

@@ -7,7 +7,7 @@ use egui_plot::{
     uniform_grid_spacer,
 };
 
-use super::{App, palette};
+use super::{App, palette, param_label};
 use crate::rank::{Axis, Ranking};
 
 const ACCENT: Color32 = Color32::from_rgb(0x00, 0x71, 0xe3);
@@ -324,12 +324,17 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
             plot_ui.set_plot_bounds_x(0.0..=x_max * X_END);
             plot_ui.set_plot_bounds_y(-Y_MARGIN * y_max..=(1.0 + Y_MARGIN) * y_max);
             if let Some(ghost) = ghost {
+                // The ghost has its own samples: for example, its iterates
+                // may vanish at a different iteration. Flat curves, of a
+                // geometric centrality, span the whole axis.
+                let xs = match ghost.axis {
+                    Axis::Flat => vec![0.0, x_max],
+                    _ => ghost.xs.clone(),
+                };
                 for (i, &id) in ranking.ids.iter().enumerate() {
                     if let Some(curve) = ghost.curve(id) {
-                        // The ghost has its own samples: for example, its
-                        // iterates may vanish at a different iteration.
                         plot_ui.line(
-                            Line::new(format!("before {}", labels[i]), points(&ghost.xs, curve))
+                            Line::new(format!("before {}", labels[i]), points(&xs, curve))
                                 .color(colors[i].gamma_multiply(0.45))
                                 .width(GHOST_WIDTH)
                                 .style(LineStyle::dashed_loose())
@@ -410,19 +415,22 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
                         .allow_hover(false),
                 );
             }
-            // At the top left, the centrality of the dashed curves, if they are
-            // not the current centrality on the graph before the last edit.
+            // At the top left, the centrality of the dashed curves, and the
+            // value of its parameter at which they are frozen, if any, if they
+            // are not the current centrality on the graph before the last
+            // edit.
             if let Some(ghost) = ghost.filter(|g| g.centrality != ranking.centrality) {
                 let format = TextFormat {
                     background,
                     ..TextFormat::simple(FontId::proportional(DASHED_NOTE_SIZE), NOTE_COLOR)
                 };
                 let mut job = LayoutJob::default();
-                job.append(
-                    &format!("Dashed: {}", ghost.centrality.name(directed)),
-                    0.0,
-                    format,
-                );
+                let name = ghost.centrality.name(directed);
+                let text = match ghost.frozen {
+                    Some((axis, x)) => format!("Dashed: {name} at {}", param_label(axis, x)),
+                    None => format!("Dashed: {name}"),
+                };
+                job.append(&text, 0.0, format);
                 plot_ui.text(
                     Text::new(
                         "",

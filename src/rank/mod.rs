@@ -368,6 +368,9 @@ pub struct Ranking {
     /// the iterates vanish only if ρ = 0, and their means are shown only if ρ >
     /// 0, the means never vanish.
     pub vanished: Option<usize>,
+    /// If this is another ranking [frozen](Self::at) at a value of its
+    /// parameter, the x-axis of the other ranking and the value.
+    pub frozen: Option<(Axis, f64)>,
     /// What [`scores`](Self::scores) needs besides the curves.
     exact: Exact,
 }
@@ -413,6 +416,7 @@ impl Ranking {
             dangling: Vec::new(),
             rho: None,
             vanished: None,
+            frozen: None,
             exact: Exact::Curves,
         };
         match centrality {
@@ -568,6 +572,25 @@ impl Ranking {
                 limit: Some(limit), ..
             } if x >= 1.0 => limit.shares.clone(),
             _ => normalized(self.scores(x)),
+        }
+    }
+
+    /// Returns the ranking frozen at `x` on the [x-axis](Self::axis): a
+    /// [flat](Axis::Flat) ranking whose scores are the [scores](Self::scores)
+    /// at `x`, recording the axis and `x` in [`frozen`](Self::frozen).
+    ///
+    /// The scores of an [unbounded](Self::unbounded) ranking at the right end
+    /// of the axis, and thus the curves of the result, are infinite.
+    pub fn at(&self, x: f64) -> Self {
+        Self {
+            axis: Axis::Flat,
+            xs: vec![0.0, 1.0],
+            curves: self.scores(x).into_iter().map(|s| vec![s, s]).collect(),
+            unbounded: false,
+            vanished: None,
+            frozen: Some((self.axis, x)),
+            exact: Exact::Curves,
+            ..self.clone()
         }
     }
 
@@ -949,6 +972,21 @@ pub(crate) mod tests {
         let r = traditional(&path_graph(), Centrality::Katz);
         assert!(!r.unbounded);
         assert_close(&r.scores(1.0), &[1.0, 2.0, 3.0], 1e-12);
+    }
+
+    #[test]
+    fn test_at() {
+        let r = Ranking::new(&lecture_graph(), Centrality::PageRank);
+        let frozen = r.at(0.85);
+        assert_eq!(frozen.axis, Axis::Flat);
+        assert_eq!(frozen.frozen, Some((Axis::Alpha, 0.85)));
+        assert_eq!(frozen.centrality, Centrality::PageRank);
+        for x in [0.0, 0.5, 1.0] {
+            assert_eq!(frozen.scores(x), r.scores(0.85));
+        }
+        // Past the vanishing of the iterates, the scores are zero
+        let r = Ranking::new(&path_graph(), Centrality::Eigenvector);
+        assert_eq!(r.at(10.0).scores(0.0), [0.0; 3]);
     }
 
     #[test]

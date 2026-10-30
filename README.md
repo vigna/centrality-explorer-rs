@@ -61,18 +61,23 @@ so build it on the machine that runs it.
   with a dot on each curve; clicking or dragging in the plot moves it. Node
   labels at the right end of the plot name the curves.
 - After each edit that adds or removes nodes or edges, the curves from
-  before the edit remain visible as faded dashed lines, until the next such
-  edit (there are none after opening a file or creating a new or random
-  graph). They show the current centrality on the graph from before the
-  edit, so they survive a switch of centrality to another family: make an
-  edit, then switch among the families to compare the effect of the same edit
-  on each.
-- A switch between two centralities of the same family, which share the
-  x-axis (for example, between Katz's index and PageRank), shows instead the
-  previous centrality, on the current graph, as faded dashed lines, and a note
-  at the top left of the plot (“Dashed: …”) names it. The last action wins:
-  the next edit brings back the curves from before the edit, and the next
-  switch the curves it calls for.
+  before the edit remain visible as faded dashed lines (there are none after
+  opening a file or creating a new or random graph).
+- With ℓ₁ normalization, under which all scores are shares, on the same
+  scale, a switch of centrality shows instead the previous centrality, on the
+  current graph, as faded dashed lines, and a note at the top left of the plot
+  names it. If the two centralities belong to the same family, whose curves
+  share the x-axis (for example, Katz's index and PageRank), the dashed lines
+  are the curves of the previous centrality; otherwise, they are horizontal
+  lines at its scores, which, for a spectral centrality, are those at the
+  current value of its parameter, given by the note (for example, “Dashed:
+  PageRank at α = 0.85”).
+- With traditional normalization, the scores of different centralities are on
+  different scales, so a switch keeps showing the graph before the last edit,
+  under the new centrality: make an edit, then switch among the centralities
+  to compare the effect of the same edit on each.
+- In both cases the last action wins: the next edit brings back the curves
+  from before the edit, and the next switch the curves it calls for.
 - The y-axis adapts to the largest score; View → Fixed y-axis [0..1] keeps
   it at [0 . . 1]. Its label names the centrality and the normalization in
   effect: “ℓ₁-normalized”, “ℓ₂-normalized”, or “not normalized”.

@@ -6,7 +6,7 @@ use anyhow::Context;
 
 use crate::files::{self, Settings};
 use crate::graph::{Graph, NodeId};
-use crate::rank::{Centrality, MAX_ITERATIONS, Options, Ranking};
+use crate::rank::{Centrality, MAX_ITERATIONS, Normalization, Options, Ranking};
 
 /// An editing session: the current graph, its undo/redo history, its
 /// curves for the current centrality, and the curves to compare them with
@@ -22,12 +22,19 @@ use crate::rank::{Centrality, MAX_ITERATIONS, Options, Ranking};
 /// loaded, or random graph), there is no ghost; when it has the same
 /// generation but a different structure, the previous ranking, that is, the
 /// current centrality on the graph before the edit, becomes the ghost;
-/// otherwise (moves and renames) ranking and ghost are unchanged. After a
-/// switch of centrality within a [family](crate::rank::Family), whose curves
-/// share the x-axis, the ghost is the previous centrality on the current
-/// graph; after a switch to another family, the ghost is again the new
-/// centrality on the graph before the last structural edit, which the session
-/// keeps for this purpose.
+/// otherwise (moves and renames) ranking and ghost are unchanged.
+///
+/// After a switch of centrality with [ℓ1 normalization](Normalization::L1),
+/// under which scores are shares, on the same scale, the ghost is the
+/// previous centrality on the current graph: its curves, if it belongs to the
+/// same [family](crate::rank::Family) as the new one, so that the curves
+/// share the x-axis, or if it is geometric, so that its curves are flat; and
+/// otherwise its scores at its current parameter, as a
+/// [frozen](Ranking::at) ranking, whose curves are flat. With traditional
+/// normalization, the ghost is again the new centrality on the graph before
+/// the last structural edit, which the session keeps for this purpose; the
+/// same happens to the ghost of a previous centrality when switching to
+/// traditional normalization.
 ///
 /// Each centrality has its own parameter: the iteration *k* for eigenvector
 /// centrality and Seeley's index, the parameter βρ (or β) for Katz's index,
@@ -145,9 +152,9 @@ impl Session {
     }
 
     /// Switches to another centrality, recomputing ranking, ghost, and
-    /// scores: the ghost is the previous centrality on the current graph, if
-    /// it belongs to the same [family](crate::rank::Family), and the new
-    /// centrality on the graph before the last edit otherwise.
+    /// scores: the ghost is the previous centrality on the current graph, with
+    /// ℓ1 normalization, and the new centrality on the graph before the last
+    /// edit otherwise (see the documentation of [`Session`]).
     ///
     /// This is neither undoable nor an unsaved change.
     pub fn set_centrality(&mut self, c: Centrality) {
@@ -155,7 +162,7 @@ impl Session {
             return;
         }
         let previous = std::mem::replace(&mut self.centrality, c);
-        self.compared = (previous.family() == c.family()).then_some(previous);
+        self.compared = (self.options.normalization == Normalization::L1).then_some(previous);
         self.rerank();
     }
 
@@ -183,6 +190,9 @@ impl Session {
             self.iteration = options.iterations;
         }
         self.options = options;
+        if options.normalization != Normalization::L1 {
+            self.compared = None;
+        }
         self.rerank();
     }
 
@@ -219,7 +229,12 @@ impl Session {
     /// centrality and Seeley's index, βρ (or β) for Katz's index, α for
     /// PageRank, and `None` for the others.
     pub fn param(&self) -> Option<f64> {
-        match self.centrality {
+        self.param_of(self.centrality)
+    }
+
+    /// Returns the parameter of a centrality (see [`param`](Self::param)).
+    fn param_of(&self, c: Centrality) -> Option<f64> {
+        match c {
             Centrality::PageRank => Some(self.alpha),
             Centrality::Katz => Some(self.katz),
             Centrality::Eigenvector | Centrality::Seeley => Some(self.iteration as f64),
@@ -390,12 +405,24 @@ impl Session {
         Ranking::with_options(graph, self.centrality, self.options)
     }
 
+    /// Returns the ghost of a previous centrality on the current graph: its
+    /// ranking, if it belongs to the family of the current one or has no
+    /// parameter, and its ranking [frozen](Ranking::at) at its parameter
+    /// otherwise.
+    fn previous(&self, c: Centrality) -> Ranking {
+        let ranking = Ranking::with_options(&self.graph, c, self.options);
+        match self.param_of(c) {
+            Some(x) if c.family() != self.centrality.family() => ranking.at(x),
+            _ => ranking,
+        }
+    }
+
     /// Recomputes ranking, ghost (see the documentation of [`Session`]), and
     /// scores.
     fn rerank(&mut self) {
         self.ranking = self.rank(&self.graph);
         self.ghost = match self.compared {
-            Some(c) => Some(Ranking::with_options(&self.graph, c, self.options)),
+            Some(c) => Some(self.previous(c)),
             None => self.before.as_ref().map(|g| self.rank(g)),
         };
         self.refresh_scores();
@@ -424,7 +451,7 @@ impl Session {
 mod tests {
     use super::*;
     use crate::graph::{Graph, NodeId};
-    use crate::rank::{DEFAULT_ITERATIONS, Normalization};
+    use crate::rank::{Axis, DEFAULT_ITERATIONS};
 
     fn two_nodes() -> (Session, NodeId, NodeId) {
         let mut s = Session::new(true);
@@ -527,20 +554,22 @@ mod tests {
         assert_eq!(s.graph().node(a).unwrap().pos, [0.0, 0.0]);
     }
 
+    /// Switches a session to traditional normalization.
+    fn traditional(s: &mut Session) {
+        s.set_options(Options {
+            normalization: Normalization::Traditional,
+            ..s.options()
+        });
+    }
+
     #[test]
     fn test_ghost_survives_switch() {
         let (mut s, a, b) = two_nodes();
+        traditional(&mut s);
+        let before = s.graph().clone();
         s.commit(with_arc(&s, a, b));
-        // From PageRank to another family
         s.set_centrality(Centrality::Harmonic);
-        let expected = Ranking::new(
-            &{
-                let mut g = s.graph().clone();
-                g.toggle_arc(a, b);
-                g
-            },
-            Centrality::Harmonic,
-        );
+        let expected = Ranking::with_options(&before, Centrality::Harmonic, s.options());
         assert_eq!(
             s.ghost().unwrap().curve(a).unwrap(),
             expected.curve(a).unwrap()
@@ -550,49 +579,92 @@ mod tests {
     }
 
     #[test]
-    fn test_ghost_after_switch_within_family() {
+    fn test_ghost_after_switch() {
         let (mut s, a, b) = two_nodes();
         s.commit(with_arc(&s, a, b));
         let edited = s.graph().clone();
-        // The previous centrality on the current graph
+        // Within a family, the curves of the previous centrality on the
+        // current graph
         s.set_centrality(Centrality::Katz);
         let ghost = s.ghost().unwrap();
-        assert_eq!(ghost.centrality, Centrality::PageRank);
+        assert_eq!(
+            (ghost.centrality, ghost.frozen),
+            (Centrality::PageRank, None)
+        );
         assert_eq!(
             ghost.curves,
             Ranking::new(&edited, Centrality::PageRank).curves
         );
         s.set_centrality(Centrality::PageRank);
         assert_eq!(s.ghost().unwrap().centrality, Centrality::Katz);
-        // Options apply to the ghost, too
+        // Across families, its scores at its parameter
         s.set_centrality(Centrality::InDegree);
-        s.set_centrality(Centrality::Harmonic);
-        let traditional = Options {
-            normalization: Normalization::Traditional,
-            ..s.options()
-        };
-        s.set_options(traditional);
-        assert_eq!(s.ghost().unwrap().curve(b).unwrap(), &[1.0, 1.0]);
-        // A switch to another family brings back the graph before the edit
-        s.set_centrality(Centrality::Seeley);
         let ghost = s.ghost().unwrap();
-        assert_eq!(ghost.centrality, Centrality::Seeley);
-        assert_eq!(ghost.curve(b).unwrap()[1], 0.5);
-        // An edit, too
-        s.set_centrality(Centrality::Eigenvector);
-        assert_eq!(s.ghost().unwrap().centrality, Centrality::Seeley);
-        s.commit(with_arc(&s, b, a));
-        let ghost = s.ghost().unwrap();
-        assert_eq!(ghost.centrality, Centrality::Eigenvector);
+        assert_eq!(ghost.frozen, Some((Axis::Alpha, 0.85)));
         assert_eq!(
             ghost.curves,
-            Ranking::with_options(&edited, Centrality::Eigenvector, traditional).curves
+            Ranking::new(&edited, Centrality::PageRank).at(0.85).curves
         );
+        // or its curves, if it is geometric
+        s.set_centrality(Centrality::Eigenvector);
+        let ghost = s.ghost().unwrap();
+        assert_eq!(
+            (ghost.centrality, ghost.frozen),
+            (Centrality::InDegree, None)
+        );
+        assert_eq!(
+            ghost.curves,
+            Ranking::new(&edited, Centrality::InDegree).curves
+        );
+        // The parameter follows the options
+        s.set_centrality(Centrality::Katz);
+        let k = DEFAULT_ITERATIONS;
+        let frozen = Some((Axis::Iteration(k), k as f64));
+        assert_eq!(s.ghost().unwrap().frozen, frozen);
+        s.set_options(Options {
+            iterations: 20,
+            ..s.options()
+        });
+        assert_eq!(s.ghost().unwrap().frozen, Some((Axis::Iteration(20), 20.0)));
+        // An edit brings back the graph before the edit
+        s.commit(with_arc(&s, b, a));
+        let ghost = s.ghost().unwrap();
+        assert_eq!(ghost.centrality, Centrality::Katz);
+        assert_eq!(ghost.curves, Ranking::new(&edited, Centrality::Katz).curves);
+    }
+
+    #[test]
+    fn test_ghost_with_traditional_normalization() {
+        let (mut s, a, b) = two_nodes();
+        s.commit(with_arc(&s, a, b));
+        s.set_centrality(Centrality::Katz);
+        assert_eq!(s.ghost().unwrap().centrality, Centrality::PageRank);
+        // Scores of different centralities are on different scales, so the
+        // ghost is always the graph before the edit
+        traditional(&mut s);
+        assert_eq!(s.ghost().unwrap().centrality, Centrality::Katz);
+        for c in [
+            Centrality::PageRank,
+            Centrality::InDegree,
+            Centrality::Harmonic,
+        ] {
+            s.set_centrality(c);
+            assert_eq!(s.ghost().unwrap().centrality, c);
+        }
+        // Back to ℓ1 normalization, from the next switch on
+        s.set_options(Options {
+            normalization: Normalization::L1,
+            ..s.options()
+        });
+        assert_eq!(s.ghost().unwrap().centrality, Centrality::Harmonic);
+        s.set_centrality(Centrality::Closeness);
+        assert_eq!(s.ghost().unwrap().centrality, Centrality::Harmonic);
     }
 
     #[test]
     fn test_ghost_across_switches_undo_redo() {
         let (mut s, a, b) = two_nodes();
+        traditional(&mut s);
         let no_arc = s.graph().clone();
         let arc = with_arc(&s, a, b);
         // The ghost is the current centrality on the other graph
@@ -603,16 +675,18 @@ mod tests {
             assert_eq!(ghost.centrality, c);
             assert_eq!(
                 ghost.curve(a).unwrap(),
-                Ranking::new(other, c).curve(a).unwrap()
+                Ranking::with_options(other, c, s.options())
+                    .curve(a)
+                    .unwrap()
             );
         };
         s.commit(arc.clone());
         check(&s, &no_arc);
-        s.set_centrality(Centrality::Harmonic);
+        s.set_centrality(Centrality::Eigenvector);
         check(&s, &no_arc);
         assert!(s.undo());
         check(&s, &arc);
-        s.set_centrality(Centrality::Eigenvector);
+        s.set_centrality(Centrality::Harmonic);
         check(&s, &arc);
         assert!(s.redo());
         check(&s, &no_arc);
@@ -621,6 +695,7 @@ mod tests {
     #[test]
     fn test_ghost_with_deleted_node_survives_switch() {
         let (mut s, a, _) = two_nodes();
+        traditional(&mut s);
         let mut g = s.graph().clone();
         g.remove_node(a);
         s.commit(g);
@@ -630,9 +705,14 @@ mod tests {
     }
 
     #[test]
-    fn test_no_ghost_after_switch_on_new_graph() {
+    fn test_ghost_after_switch_on_new_graph() {
+        // The previous centrality, on no nodes
         let mut s = Session::new(true);
         s.set_centrality(Centrality::Seeley);
+        assert!(s.ghost().unwrap().ids.is_empty());
+        // No graph before an edit
+        traditional(&mut s);
+        s.set_centrality(Centrality::Katz);
         assert!(s.ghost().is_none());
     }
 
