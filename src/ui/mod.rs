@@ -120,7 +120,7 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindge
             Box::new(|cc| {
                 // The web build cannot open files, so it starts on an example.
                 let mut app = App::new(cc);
-                app.load_example(0);
+                app.start_with_example(0);
                 Ok(Box::new(app))
             }),
         )
@@ -166,6 +166,8 @@ pub struct App {
     canvas_rect: egui::Rect,
     /// The time of the current frame, in seconds.
     now: f64,
+    /// A built-in example to load once the canvas has its size.
+    start_example: Option<usize>,
 }
 
 impl App {
@@ -195,6 +197,7 @@ impl App {
             fixed_y: false,
             canvas_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, DEFAULT_CANVAS.into()),
             now: 0.0,
+            start_example: None,
         }
     }
 
@@ -234,6 +237,13 @@ impl App {
         self.animation = Some(Animation::new(Default::default(), self.now));
         self.session.commit(graph);
         self.prune();
+    }
+
+    /// Shows a built-in example when the application starts. It is loaded at
+    /// the end of the first frame, once the canvas has its real size, so the
+    /// layout fills it.
+    pub fn start_with_example(&mut self, index: usize) {
+        self.start_example = Some(index);
     }
 
     /// Starts an animation from the current node positions.
@@ -560,6 +570,10 @@ impl eframe::App for App {
                 egui::CentralPanel::default().show(ui, |ui| plot::plot(self, ui));
             });
         egui::CentralPanel::default().show(ui, |ui| canvas::canvas(self, ui));
+        if let Some(index) = self.start_example.take() {
+            self.load_example(index);
+            ctx.request_repaint();
+        }
         if !self.hover_seen {
             self.hovered = None;
         }

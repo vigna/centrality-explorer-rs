@@ -622,3 +622,25 @@ fn test_load_example_is_undoable() {
     h.state_mut().session_mut().undo();
     assert!(h.state().session().graph().is_empty());
 }
+
+#[test]
+fn test_start_example_uses_the_real_canvas_size() {
+    // A wide window: the canvas (the left half) is far wider than the
+    // default canvas size used before the first frame.
+    let mut h = Harness::builder()
+        .with_size([2400.0, 900.0])
+        .build_eframe(|cc| {
+            let mut app = App::new(cc);
+            app.start_with_example(0);
+            app
+        });
+    h.run();
+    let graph = h.state().session().graph();
+    assert_eq!(graph.len(), 32);
+    let max_x = graph.nodes().iter().map(|n| n.pos[0]).fold(0.0, f32::max);
+    // A layout for the default canvas (640 points wide) stays within 640.
+    assert!(
+        max_x > 640.0,
+        "laid out for the default canvas: max x = {max_x}"
+    );
+}
