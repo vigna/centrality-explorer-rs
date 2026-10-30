@@ -30,14 +30,28 @@ Their Cesàro means, however, converge to the eigenvector (check “Cesàro mean
 next to the slider). For details, see “[*Spectral
 Ranking*](https://arxiv.org/abs/0912.0238)”.
 
-## Building and Running
+## Installing, Building, and Running
+
+Rust 1.95 or later is required. To install the application from crates.io, pass
+the compiler flag explicitly:
+
+```sh
+RUSTFLAGS="-C target-cpu=native" cargo install centrality-explorer
+centrality-explorer
+```
+
+The flag is necessary because Cargo reads `.cargo/config.toml` only from the
+directory in which it is invoked, and thus it ignores the one in the crate when
+installing from crates.io. In a checkout of the repository the file is picked up
+automatically:
 
 ```sh
 cargo run --release
 ```
 
-The crate is compiled with `-C target-cpu=native` (see `.cargo/config.toml`),
-so build it on the machine that runs it.
+or, to install from the checkout, `cargo install --path .`. In all cases the
+binary is compiled for the CPU of the machine that builds it, so build it on the
+machine that runs it.
 
 ## Reading the Screen
 
