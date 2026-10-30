@@ -56,7 +56,7 @@ sh web/build.sh
 
 A web page cannot open or save files, so the Examples menu offers small graphs
 used in teaching. The directed ones are the Fauci email replied-to network, the
-examples of the magnetic matrix powers paper (Gleich 2006, a seven-node teaser,
+small directed examples (Gleich 2006, a seven-node example,
 Sampson's monastery, the Florida Bay food web), seven classic networks from
 Netzschleuder (McGrew's preschool, Guhl's hens, Krackhardt's managers, Moreno's
 sociogram, the Galesburg physicians, Madoff's feeder funds, the 1998 World Cup

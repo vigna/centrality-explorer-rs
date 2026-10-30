@@ -41,7 +41,7 @@ macro_rules! example {
 pub const EXAMPLES: &[Example] = &[
     example!("Fauci Emails (32)", true, "fauci"),
     example!("Gleich 2006 Example (11)", true, "gleich2006"),
-    example!("Magnetic Powers Teaser (7)", true, "teaser"),
+    example!("Small Example (7)", true, "small7"),
     example!("Sampson's Monastery, Liking (18)", true, "sampson"),
     example!("Florida Bay Food Web (128)", true, "foodweb"),
     example!("McGrew Preschool, Toy Wins (19)", true, "mcgrew"),
@@ -82,7 +82,7 @@ mod tests {
             [
                 ("Fauci Emails (32)", 32, 63, true),
                 ("Gleich 2006 Example (11)", 11, 33, true),
-                ("Magnetic Powers Teaser (7)", 7, 13, true),
+                ("Small Example (7)", 7, 13, true),
                 ("Sampson's Monastery, Liking (18)", 18, 97, true),
                 ("Florida Bay Food Web (128)", 128, 2137, true),
                 ("McGrew Preschool, Toy Wins (19)", 19, 32, true),

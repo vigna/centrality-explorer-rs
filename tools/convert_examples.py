@@ -6,8 +6,7 @@ Sources (from the Eigendeck repo, github.com/dgleich/eigendeck):
   * the Fauci email replied-to network, example-demos/magnetic-powers/graphs/
     fauci-email-graph.json (Benson, Veldt and Gleich, arXiv:2108.01239);
   * the other directed graphs of example-demos/magnetic-powers/graphs: the
-    two-component example of Gleich (2006), the seven-node teaser graph of the
-    magnetic matrix powers demo, Sampson's monastery (positive ties only; the
+    two-component example of Gleich (2006), a small seven-node example, Sampson's monastery (positive ties only; the
     explorer has no signs), and the Florida Bay food web (dry season,
     unweighted). The C. elegans neural network (297 nodes) is left out: at
     that size the plot is unreadable and each recomputation takes seconds;
@@ -112,7 +111,7 @@ def main(eigendeck):
     magnetic = root / "example-demos/magnetic-powers/graphs"
     for name, file, label, keep in [
         ("gleich2006", "gleich-directed-2006-example", lambda v: v["label"], lambda e: True),
-        ("teaser", "powers-teaser-7node", lambda v: v["label"], lambda e: True),
+        ("small7", "powers-teaser-7node", lambda v: v["label"], lambda e: True),
         ("sampson", "sampson-monastery", lambda v: v["label"][:3], lambda e: e["weight"] > 0),
         ("foodweb", "foodweb-baydry", lambda v: v["label"].split()[-1], lambda e: True),
     ]:
