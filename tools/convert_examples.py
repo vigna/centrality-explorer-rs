@@ -5,6 +5,12 @@ Explorer file format (version 1), writing data/examples/*.json.
 Sources (from the Eigendeck repo, github.com/dgleich/eigendeck):
   * the Fauci email replied-to network, example-demos/magnetic-powers/graphs/
     fauci-email-graph.json (Benson, Veldt and Gleich, arXiv:2108.01239);
+  * the other directed graphs of example-demos/magnetic-powers/graphs: the
+    two-component example of Gleich (2006), the seven-node teaser graph of the
+    magnetic matrix powers demo, Sampson's monastery (positive ties only; the
+    explorer has no signs), and the Florida Bay food web (dry season,
+    unweighted). The C. elegans neural network (297 nodes) is left out: at
+    that size the plot is unreadable and each recomputation takes seconds;
   * karate, dolphins, political books and college football, from the
     COMMUNITY_DATA block of the community-examples demo in
     examples/local-networks.eigendeck.
@@ -53,6 +59,20 @@ def main(eigendeck):
     write("fauci", True, unique([initials(v["label"]) for v in nodes]),
           [(index[e["source"]], index[e["target"]]) for e in fauci["edges"]],
           pos=[(v["x"], v["y"]) for v in nodes])
+
+    magnetic = root / "example-demos/magnetic-powers/graphs"
+    for name, file, label, keep in [
+        ("gleich2006", "gleich-directed-2006-example", lambda v: v["label"], lambda e: True),
+        ("teaser", "powers-teaser-7node", lambda v: v["label"], lambda e: True),
+        ("sampson", "sampson-monastery", lambda v: v["label"][:3], lambda e: e["weight"] > 0),
+        ("foodweb", "foodweb-baydry", lambda v: v["label"].split()[-1], lambda e: True),
+    ]:
+        g = json.loads((magnetic / f"{file}.json").read_text())
+        nodes = sorted(g["nodes"], key=lambda v: v["id"])
+        index = {v["id"]: i for i, v in enumerate(nodes)}
+        write(name, True, unique([label(v) for v in nodes]),
+              [(index[e["source"]], index[e["target"]]) for e in g["edges"] if keep(e)],
+              pos=[(v["x"], v["y"]) for v in nodes])
 
     db = sqlite3.connect(f"file:{root / 'examples/local-networks.eigendeck'}?mode=ro", uri=True)
     html = db.execute("select data from assets where valid_to is null and path = ?",

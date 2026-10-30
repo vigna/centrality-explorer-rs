@@ -9,6 +9,8 @@ use crate::graph::Graph;
 pub struct Example {
     /// The name shown in the Examples menu.
     pub name: &'static str,
+    /// Whether the graph is directed (the menu groups the examples by it).
+    pub directed: bool,
     /// The graph, in the format of [`files`].
     json: &'static str,
 }
@@ -23,29 +25,29 @@ impl Example {
     }
 }
 
-/// The built-in examples, in menu order. The first one is shown when the
-/// web build starts.
+/// Declares a built-in example from its file in `data/examples`.
+macro_rules! example {
+    ($name:expr, $directed:expr, $file:literal) => {
+        Example {
+            name: $name,
+            directed: $directed,
+            json: include_str!(concat!("../../data/examples/", $file, ".json")),
+        }
+    };
+}
+
+/// The built-in examples, in menu order, directed ones first. The first one
+/// is shown when the web build starts.
 pub const EXAMPLES: &[Example] = &[
-    Example {
-        name: "Fauci Emails (32, directed)",
-        json: include_str!("../../data/examples/fauci.json"),
-    },
-    Example {
-        name: "Karate Club (34)",
-        json: include_str!("../../data/examples/karate.json"),
-    },
-    Example {
-        name: "Dolphins (62)",
-        json: include_str!("../../data/examples/dolphins.json"),
-    },
-    Example {
-        name: "Political Books (105)",
-        json: include_str!("../../data/examples/polbooks.json"),
-    },
-    Example {
-        name: "College Football (115)",
-        json: include_str!("../../data/examples/football.json"),
-    },
+    example!("Fauci Emails (32)", true, "fauci"),
+    example!("Gleich 2006 Example (11)", true, "gleich2006"),
+    example!("Magnetic Powers Teaser (7)", true, "teaser"),
+    example!("Sampson's Monastery, Liking (18)", true, "sampson"),
+    example!("Florida Bay Food Web (128)", true, "foodweb"),
+    example!("Karate Club (34)", false, "karate"),
+    example!("Dolphins (62)", false, "dolphins"),
+    example!("Political Books (105)", false, "polbooks"),
+    example!("College Football (115)", false, "football"),
 ];
 
 #[cfg(test)]
@@ -54,23 +56,35 @@ mod tests {
 
     #[test]
     fn every_example_loads_with_its_size() {
-        let sizes: Vec<(usize, usize, bool)> = EXAMPLES
+        let sizes: Vec<(&str, usize, usize, bool)> = EXAMPLES
             .iter()
             .map(|e| {
                 let g = e.graph();
-                (g.len(), g.arcs().count(), g.is_directed())
+                (e.name, g.len(), g.arcs().count(), g.is_directed())
             })
             .collect();
-        // Undirected graphs store both directions of each edge.
+        // The counts of the sources; undirected graphs store both directions
+        // of each edge.
         assert_eq!(
             sizes,
             [
-                (32, 63, true),
-                (34, 156, false),
-                (62, 318, false),
-                (105, 882, false),
-                (115, 1226, false)
+                ("Fauci Emails (32)", 32, 63, true),
+                ("Gleich 2006 Example (11)", 11, 33, true),
+                ("Magnetic Powers Teaser (7)", 7, 13, true),
+                ("Sampson's Monastery, Liking (18)", 18, 97, true),
+                ("Florida Bay Food Web (128)", 128, 2137, true),
+                ("Karate Club (34)", 34, 156, false),
+                ("Dolphins (62)", 62, 318, false),
+                ("Political Books (105)", 105, 882, false),
+                ("College Football (115)", 115, 1226, false),
             ]
         );
+    }
+
+    #[test]
+    fn the_directed_flags_match_the_graphs() {
+        for e in EXAMPLES {
+            assert_eq!(e.directed, e.graph().is_directed(), "{}", e.name);
+        }
     }
 }

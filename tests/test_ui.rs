@@ -616,7 +616,11 @@ fn test_render_eigenvector_vanishing() {
 fn test_load_example_is_undoable() {
     let mut h = harness();
     h.run();
-    h.state_mut().load_example(1);
+    let karate = centrality_explorer::examples::EXAMPLES
+        .iter()
+        .position(|e| e.name.starts_with("Karate"))
+        .unwrap();
+    h.state_mut().load_example(karate);
     h.run();
     assert_eq!(h.state().session().graph().len(), 34);
     h.state_mut().session_mut().undo();

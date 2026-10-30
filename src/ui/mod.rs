@@ -396,7 +396,19 @@ impl App {
                 );
             });
             ui.menu_button("Examples", |ui| {
+                let mut group = None;
                 for (index, example) in crate::examples::EXAMPLES.iter().enumerate() {
+                    if group != Some(example.directed) {
+                        if group.is_some() {
+                            ui.separator();
+                        }
+                        ui.weak(if example.directed {
+                            "Directed"
+                        } else {
+                            "Undirected"
+                        });
+                        group = Some(example.directed);
+                    }
                     item(ui, example.name, None, Command::Example(index));
                 }
             });
