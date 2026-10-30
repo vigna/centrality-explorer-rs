@@ -15,13 +15,40 @@ Sources (from the Eigendeck repo, github.com/dgleich/eigendeck):
     COMMUNITY_DATA block of the community-examples demo in
     examples/local-networks.eigendeck.
 
+  * seven classic directed networks from Netzschleuder (Tiago P. Peixoto's
+    network catalogue, https://networks.skewed.de), downloaded from it (see
+    each entry there for the full citation):
+      - McGrew's preschool toy competitions (W. C. McGrew, 1972), and
+      - Guhl's White Leghorn hens peck order (A. M. Guhl, 1946),
+        both reversed so that an arc points to the winner (PageRank then ranks
+        the dominant animals and children highest);
+      - Krackhardt's high-tech managers, advice layer (D. Krackhardt, 1987):
+        an arc from a manager to one they go to for advice;
+      - Moreno's sociograms, second grade (J. L. Moreno and H. H. Jennings,
+        1934): an arc from a pupil to one they want to sit next to;
+      - the Galesburg physicians, discussion ties (Coleman, Katz and Menzel,
+        1966): an arc from a physician to one they discuss cases with;
+      - Madoff's feeder funds (V. Krebs, 2009): arcs follow the money;
+      - the World Cup 1998 player market (L. Krempel): an arc from a national
+        team's country to a country where its players had club contracts.
+    Weights, layers other than the one named, and duplicate arcs are dropped.
+  * the five graphs of H. Bott's (1928) table of social responses among eleven
+    nursery-school children (tools/bott_table2.py, transcribed from the printed
+    table): an arc from a child to another toward whom they showed the
+    behaviour, at least twice for talking, interference and watching, and at
+    least once for the rarer imitation and cooperation.
+
 Usage: tools/convert_examples.py <path to the eigendeck repo>
 """
+import csv
+import io
 import json
 import pathlib
 import re
 import sqlite3
 import sys
+import urllib.request
+import zipfile
 
 PALETTE_SIZE = 12
 OUT = pathlib.Path(__file__).resolve().parent.parent / "data" / "examples"
@@ -51,6 +78,26 @@ def initials(name):
     return "".join(w[0] for w in re.split(r"[\s.-]+", name) if w).upper()[:3]
 
 
+def netzschleuder(net, sub):
+    """Returns the (nodes, edges) rows of a Netzschleuder network, as dicts."""
+    url = f"https://networks.skewed.de/net/{net}/files/{sub}.csv.zip"
+    with urllib.request.urlopen(url, timeout=60) as response:
+        archive = zipfile.ZipFile(io.BytesIO(response.read()))
+
+    def rows(name):
+        reader = csv.reader(io.TextIOWrapper(archive.open(name), "utf-8"))
+        header = [h.strip().lstrip("#").strip() for h in next(reader)]
+        return [dict(zip(header, (c.strip() for c in row))) for row in reader]
+
+    return rows("nodes.csv"), rows("edges.csv")
+
+
+def position(text):
+    """Parses a Netzschleuder `_pos` value such as 'array([1.0, -2.0])'."""
+    x, y = (float(v) for v in re.findall(r"-?[\d.]+(?:e-?\d+)?", text)[:2])
+    return (x * 100.0, -y * 100.0)
+
+
 def main(eigendeck):
     root = pathlib.Path(eigendeck)
     fauci = json.loads((root / "example-demos/magnetic-powers/graphs/fauci-email-graph.json").read_text())
@@ -73,6 +120,37 @@ def main(eigendeck):
         write(name, True, unique([label(v) for v in nodes]),
               [(index[e["source"]], index[e["target"]]) for e in g["edges"] if keep(e)],
               pos=[(v["x"], v["y"]) for v in nodes])
+
+    numbers = lambda nodes: [str(i + 1) for i in range(len(nodes))]
+    for name, net, sub, label, keep, reverse in [
+        ("mcgrew", "mcgrew_preschool", "mcgrew_preschool", lambda n: [v["name"] for v in n],
+         lambda e: True, True),
+        ("hens", "hens", "hens", numbers, lambda e: True, True),
+        ("krackhardt", "high_tech_company", "high_tech_company", numbers,
+         lambda e: e["layer"] == "1", False),
+        ("moreno2", "moreno_sociograms", "grade_2", lambda n: [v["name"] for v in n],
+         lambda e: True, False),
+        ("galesburg", "galesburg_physicians", "discussion", lambda n: [v["name"] for v in n],
+         lambda e: True, False),
+        ("madoff", "madoff_feeders", "madoff_feeders",
+         lambda n: unique([initials(v["name"].replace("_", " ")) for v in n]), lambda e: True, False),
+        ("worldcup", "world_cup_players", "world_cup_players", lambda n: [v["name"] for v in n],
+         lambda e: True, False),
+    ]:
+        nodes, edges = netzschleuder(net, sub)
+        arcs = [(int(e["source"]), int(e["target"])) for e in edges if keep(e)]
+        if reverse:
+            arcs = [(t, s) for s, t in arcs]
+        write(name, True, unique(label(nodes)), arcs, pos=[position(v["_pos"]) for v in nodes])
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import bott_table2 as bott
+    for k, (name, least) in enumerate([("talking", 2), ("interference", 2), ("watching", 2),
+                                        ("imitation", 1), ("cooperation", 1)]):
+        index = {c: i for i, c in enumerate(bott.KIDS)}
+        arcs = [(index[r], index[c]) for r in bott.KIDS for c, v in bott.T[r].items()
+                if v[k] >= least]
+        write(f"bott_{name}", True, list(bott.KIDS), arcs)
 
     db = sqlite3.connect(f"file:{root / 'examples/local-networks.eigendeck'}?mode=ro", uri=True)
     html = db.execute("select data from assets where valid_to is null and path = ?",
