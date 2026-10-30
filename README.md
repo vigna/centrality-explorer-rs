@@ -54,7 +54,7 @@ so build it on the machine that runs it.
   has the standard size.
 - A node whose share is exactly zero has a thicker gray outline: for
   example, every node once the iterates of eigenvector centrality vanish, or
-  the nodes outside the sinks in the limit of PageRank at α = 1. A score that
+  the nodes outside the buckets in the limit of PageRank at α = 1. A score that
   is merely small, such as that of the same nodes at α = 0.99, is not zero,
   and keeps the dark outline.
 - The vertical line in the plot marks the current value of the parameter,
@@ -145,11 +145,11 @@ normalization of the plot; hovering a curve highlights it and its node.
   dominant classes: strongly connected components whose spectral radius is
   ρ, which determine the limit as βρ → 1. There are no dashed outlines,
   since dangling nodes are not special for the adjacency matrix.
-- For PageRank, shaded hulls labeled “sinks” mark the sinks: terminal
+- For PageRank, shaded hulls labeled “buckets” mark the buckets: terminal
   strongly connected components (groups of nodes with no edge leaving them)
-  other than lone dangling nodes. A dangling node is terminal, but the walk
-  leaves it by jumping to every node, so it does not keep the rank that
-  enters it.
+  other than lone dangling nodes, that is, nodes with no outgoing edges (the
+  sinks of the graph). A dangling node is terminal, but the walk leaves it by
+  jumping to every node, so it does not keep the rank that enters it.
 - For PageRank, nodes with a dashed outline are dangling: they have no
   outgoing edges, so the walk jumps from them to a node chosen uniformly at
   random.
@@ -234,7 +234,7 @@ at 0.
 ![Seeley's index](screenshots/seeley.png)
 
 Seeley's index is ½ on *d* and *e*, and zero elsewhere: all the probability ends
-up in the sink. The plot shows the power method, that is, the walk from the
+up in the bucket. The plot shows the power method, that is, the walk from the
 uniform distribution. The probability leaving the triangle through *c* → *d*
 never comes back, so the iterates of *a*, *b*, and *c* decay, in steps, as the
 probability goes around the triangle; at *k* = 50 they are tiny, but not
@@ -261,11 +261,11 @@ coincide at 0.2.
 
 ![PageRank](screenshots/pagerank.png)
 
-After the edit, *d* and *e* form a sink, shaded in the graph. As α → 1, PageRank
+After the edit, *d* and *e* form a bucket, shaded in the graph. As α → 1, PageRank
 tends to Seeley's index, so the PageRank of *d* and *e* rises to ½ each, and
 that of *a*, *b*, and *c* falls to zero, all of a sudden near α = 1; drag the
 slider to α = 1, and *a*, *b*, and *c* get a gray outline. Before the edit, the
-walk restarted from the dangling node *e*, there was no sink, and the limit at α
+walk restarted from the dangling node *e*, there was no bucket, and the limit at α
 = 1 (the right end of the dashed curves) is positive on every node.
 
 The screenshots are regenerated, on a machine with a GPU, by
@@ -320,7 +320,7 @@ centrality and changing a parameter are not changes to the graph: they are
 not undoable, and they do not count as unsaved changes.
 
 Random graphs follow the directed Chung–Lu model, whose in-degrees and
-out-degrees follow a power law. Sparse random graphs often have no sink, in
+out-degrees follow a power law. Sparse random graphs often have no bucket, in
 which case PageRank at α = 1 vanishes on no node (see below); add the
 missing structure by hand.
 
@@ -554,10 +554,10 @@ uniform. For α < 1 the curves are computed exactly, by solving (*I* − α
 a truncated power series, which is inaccurate near α = 1 on periodic structures.
 
 The value at α = 1 is the exact limit of PageRank as α → 1. If the graph has
-sinks, the limit is supported exactly on them: each sink receives the
+buckets, the limit is supported exactly on them: each bucket receives the
 probability that a walk from the uniform distribution is absorbed into it,
 spread according to its stationary distribution, and every other node,
-including dangling ones, gets zero. If instead the graph has no sink, every
+including dangling ones, gets zero. If instead the graph has no bucket, every
 terminal component is a dangling node, the walk restarts from them, and the
 limit is the stationary distribution of the walk, which is positive on every
 node. In both cases, the limit is Seeley's index.

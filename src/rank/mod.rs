@@ -347,14 +347,15 @@ pub struct Ranking {
     /// The groups of nodes to shade, each sorted by node index, and sorted
     /// by their first node.
     ///
-    /// For PageRank and Seeley's index, they are the sinks of the graph,
+    /// For PageRank and Seeley's index, they are the buckets of the graph,
     /// that is, its [terminal components](terminal_sccs) other than lone
-    /// dangling nodes, which the walk leaves by jumping to every node; for
+    /// dangling nodes (the sinks of the graph), which the walk leaves by
+    /// jumping to every node; for
     /// Katz's index and eigenvector centrality, they are the [dominant
     /// classes](Spectrum::dominant_classes), if ρ > 0; otherwise, there are
     /// none.
     pub hulls: Vec<Vec<NodeId>>,
-    /// The label of the [hulls](Self::hulls): "sinks" for PageRank and
+    /// The label of the [hulls](Self::hulls): "buckets" for PageRank and
     /// Seeley's index, "dominant" for Katz's index with ρ > 0 and for
     /// eigenvector centrality, and the empty string otherwise.
     pub hull_label: &'static str,
@@ -425,7 +426,7 @@ impl Ranking {
                 r.hulls = r.node_ids(terminal_sccs(chain.successors()).into_iter().filter(
                     |component| !(component.len() == 1 && chain.is_dangling(component[0])),
                 ));
-                r.hull_label = "sinks";
+                r.hull_label = "buckets";
                 r.dangling = (0..n)
                     .filter(|&v| chain.is_dangling(v))
                     .map(|v| r.ids[v])
@@ -628,7 +629,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_ranking_sinks() {
+    fn test_ranking_buckets() {
         let mut g = Graph::new(true);
         let ids: Vec<_> = (0..3).map(|i| g.add_node([i as f32, 0.0])).collect();
         g.add_arc(ids[0], ids[1]);
@@ -640,7 +641,7 @@ pub(crate) mod tests {
             Ranking::new(&g, Centrality::PageRank).hulls,
             vec![vec![ids[2]]]
         );
-        // a dangling node beside a sink
+        // a dangling node beside a bucket
         let d = g.add_node([3.0, 0.0]);
         g.add_arc(ids[0], d);
         assert_eq!(
@@ -650,10 +651,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_terminal_components_are_sinks() {
+    fn test_terminal_components_are_buckets() {
         let mut g = Graph::new(true);
         let ids: Vec<_> = (0..6).map(|i| g.add_node([i as f32, 0.0])).collect();
-        // f is dangling; c↔d and the self-loop on e are sinks
+        // f is dangling; c↔d and the self-loop on e are buckets
         for (s, t) in [(0, 1), (0, 2), (2, 3), (3, 2), (1, 4), (4, 4), (0, 5)] {
             g.add_arc(ids[s], ids[t]);
         }

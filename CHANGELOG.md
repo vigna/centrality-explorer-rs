@@ -37,6 +37,9 @@
 
 ### Changed
 
+- The shaded terminal components of PageRank and Seeley's index are now
+  labeled “buckets”, as sinks are nodes with out-degree zero.
+
 - The shortcuts of the centralities are Cmd-Alt-1 to Cmd-Alt-8, as indegree
   comes first.
 

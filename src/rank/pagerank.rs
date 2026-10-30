@@ -98,7 +98,7 @@ pub fn pagerank(chain: &Chain, alpha: f64) -> Vec<f64> {
 /// walked, in which dangling nodes link to every node.
 ///
 /// These are the components on which the [`limit`] is supported. If the
-/// graph has [sinks](super::Ranking::hulls), they are exactly the sinks;
+/// graph has [buckets](super::Ranking::hulls), they are exactly the buckets;
 /// otherwise, the walk restarts from the dangling nodes, and the whole graph
 /// is a single terminal component.
 ///
@@ -274,9 +274,9 @@ mod tests {
         );
         let path = Chain::new(vec![vec![1], vec![0, 2], vec![1, 3], vec![2]]);
         assert_eq!(terminal_sccs(path.successors()), vec![vec![0, 1, 2, 3]]);
-        let two_sinks = Chain::new(vec![vec![1, 2], vec![], vec![2]]);
+        let two_terminal = Chain::new(vec![vec![1, 2], vec![], vec![2]]);
         assert_eq!(
-            terminal_sccs(two_sinks.successors()),
+            terminal_sccs(two_terminal.successors()),
             vec![vec![1], vec![2]]
         );
     }
