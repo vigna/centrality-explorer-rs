@@ -1,4 +1,4 @@
-//! Closeness, harmonic centrality, and betweenness.
+//! Indegree, closeness, harmonic centrality, and betweenness.
 
 use std::collections::VecDeque;
 
@@ -19,6 +19,20 @@ fn bfs(succ: &[Vec<usize>], source: usize, dist: &mut [usize]) -> Vec<usize> {
         }
     }
     order
+}
+
+/// Returns the indegree of every node of a graph given by successor lists,
+/// that is, the number of arcs entering it, a self-loop included.
+///
+/// This is **1** *A*, where *A* is the adjacency matrix: on undirected graphs,
+/// whose edges are pairs of opposite arcs, it is the degree. Values are raw,
+/// that is, unnormalized.
+pub fn indegree(succ: &[Vec<usize>]) -> Vec<f64> {
+    let mut d = vec![0.0; succ.len()];
+    for &w in succ.iter().flatten() {
+        d[w] += 1.0;
+    }
+    d
 }
 
 /// Returns the closeness of every node of a graph given by successor lists.
@@ -132,6 +146,16 @@ pub fn betweenness(succ: &[Vec<usize>]) -> Vec<f64> {
 mod tests {
     use super::*;
     use crate::rank::tests::assert_close;
+
+    #[test]
+    fn test_indegree() {
+        // a → b → c, a → c, and a self-loop on c
+        let succ = [vec![1, 2], vec![2], vec![2]];
+        assert_close(&indegree(&succ), &[0.0, 1.0, 3.0], 0.0);
+        // The undirected star: the degree
+        let succ = [vec![1, 2, 3], vec![0], vec![0], vec![0]];
+        assert_close(&indegree(&succ), &[3.0, 1.0, 1.0, 1.0], 0.0);
+    }
 
     #[test]
     fn test_directed_path() {

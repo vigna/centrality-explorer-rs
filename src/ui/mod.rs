@@ -21,7 +21,7 @@ use crate::Session;
 use crate::edit::{Editor, Gesture, Target};
 use crate::graph::{Graph, NodeId};
 use crate::layouts;
-use crate::rank::{Axis, Centrality, ITERATIONS};
+use crate::rank::{Axis, Centrality, MAX_ITERATIONS, Normalization};
 
 /// The application name.
 const NAME: &str = "Centrality Explorer";
@@ -52,9 +52,9 @@ const FULLSCREEN: KeyboardShortcut =
     KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::F);
 /// The modifiers of the shortcuts of the centralities.
 const CMD_ALT: Modifiers = Modifiers::COMMAND.plus(Modifiers::ALT);
-/// The shortcuts of the centralities, Cmd-Alt-1 to Cmd-Alt-7, in the order of
+/// The shortcuts of the centralities, Cmd-Alt-1 to Cmd-Alt-8, in the order of
 /// [`Centrality::ALL`].
-const CENTRALITIES: [KeyboardShortcut; 7] = [
+const CENTRALITIES: [KeyboardShortcut; 8] = [
     KeyboardShortcut::new(CMD_ALT, Key::Num1),
     KeyboardShortcut::new(CMD_ALT, Key::Num2),
     KeyboardShortcut::new(CMD_ALT, Key::Num3),
@@ -62,6 +62,7 @@ const CENTRALITIES: [KeyboardShortcut; 7] = [
     KeyboardShortcut::new(CMD_ALT, Key::Num5),
     KeyboardShortcut::new(CMD_ALT, Key::Num6),
     KeyboardShortcut::new(CMD_ALT, Key::Num7),
+    KeyboardShortcut::new(CMD_ALT, Key::Num8),
 ];
 
 /// A command from a menu, a shortcut, or a context menu.
@@ -83,7 +84,7 @@ enum Command {
 /// Shortcuts and their commands, variants with extra modifiers first
 /// (shortcuts match modifiers logically, so Cmd-Z would also match
 /// Cmd-Shift-Z, and Cmd-1 would also match Cmd-Alt-1).
-const SHORTCUTS: [(KeyboardShortcut, Command); 19] = [
+const SHORTCUTS: [(KeyboardShortcut, Command); 20] = [
     (SAVE_AS, Command::SaveAs),
     (REDO, Command::Redo),
     (FULLSCREEN, Command::Fullscreen),
@@ -94,6 +95,7 @@ const SHORTCUTS: [(KeyboardShortcut, Command); 19] = [
     (CENTRALITIES[4], Command::Centrality(Centrality::ALL[4])),
     (CENTRALITIES[5], Command::Centrality(Centrality::ALL[5])),
     (CENTRALITIES[6], Command::Centrality(Centrality::ALL[6])),
+    (CENTRALITIES[7], Command::Centrality(Centrality::ALL[7])),
     (NEW, Command::New),
     (OPEN, Command::Open),
     (SAVE, Command::Save),
@@ -282,58 +284,98 @@ impl App {
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         let mut command = None;
-        let mut item = |ui: &mut egui::Ui, text: &str, shortcut: &KeyboardShortcut, c: Command| {
-            let shortcut = ui.ctx().format_shortcut(shortcut);
-            if ui
-                .add(egui::Button::new(text).shortcut_text(shortcut))
-                .clicked()
-            {
-                command = Some(c);
-            }
-        };
+        let mut item =
+            |ui: &mut egui::Ui, text: &str, shortcut: Option<&KeyboardShortcut>, c: Command| {
+                let mut button = egui::Button::new(text);
+                if let Some(shortcut) = shortcut {
+                    button = button.shortcut_text(ui.ctx().format_shortcut(shortcut));
+                }
+                if ui.add(button).clicked() {
+                    command = Some(c);
+                }
+            };
         let current = self.session.centrality();
+        let directed = self.session.graph().is_directed();
         let mut centrality = None;
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
-                item(ui, "New…", &NEW, Command::New);
-                item(ui, "Open…", &OPEN, Command::Open);
-                item(ui, "Save", &SAVE, Command::Save);
-                item(ui, "Save As…", &SAVE_AS, Command::SaveAs);
+                item(ui, "New…", Some(&NEW), Command::New);
+                item(ui, "Open…", Some(&OPEN), Command::Open);
+                item(ui, "Save", Some(&SAVE), Command::Save);
+                item(ui, "Save As…", Some(&SAVE_AS), Command::SaveAs);
                 ui.separator();
-                item(ui, "Quit", &QUIT, Command::Quit);
+                item(ui, "Quit", Some(&QUIT), Command::Quit);
             });
             ui.menu_button("Edit", |ui| {
-                item(ui, "Undo", &UNDO, Command::Undo);
-                item(ui, "Redo", &REDO, Command::Redo);
+                item(ui, "Undo", Some(&UNDO), Command::Undo);
+                item(ui, "Redo", Some(&REDO), Command::Redo);
             });
             ui.menu_button("Graph", |ui| {
-                item(ui, "Random Graph…", &RANDOM, Command::Random);
+                item(ui, "Random Graph…", Some(&RANDOM), Command::Random);
                 ui.separator();
                 item(
                     ui,
                     "Force-Directed Layout",
-                    &FORCE,
+                    Some(&FORCE),
                     Command::Layout(layouts::force),
                 );
                 item(
                     ui,
                     "Circle Layout",
-                    &CIRCLE,
+                    Some(&CIRCLE),
                     Command::Layout(layouts::circle),
                 );
                 item(
                     ui,
                     "Components Layout",
-                    &COMPONENTS,
+                    Some(&COMPONENTS),
                     Command::Layout(layouts::components),
+                );
+                ui.separator();
+                item(
+                    ui,
+                    "Rotate 90° Clockwise",
+                    None,
+                    Command::Layout(layouts::rotate),
+                );
+                item(
+                    ui,
+                    "Flip Horizontally",
+                    None,
+                    Command::Layout(layouts::flip_horizontally),
+                );
+                item(
+                    ui,
+                    "Flip Vertically",
+                    None,
+                    Command::Layout(layouts::flip_vertically),
                 );
             });
             ui.menu_button("Centrality", |ui| {
-                centrality = centrality_menu(ui, current);
+                centrality = centrality_menu(ui, current, directed);
             });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut self.fixed_y, "Fixed y-axis [0..1]");
-                item(ui, "Full Screen", &FULLSCREEN, Command::Fullscreen);
+                let mut options = self.session.options();
+                let mut l1 = options.normalization == Normalization::L1;
+                if ui
+                    .checkbox(&mut l1, "ℓ₁ normalization")
+                    .on_hover_text(
+                        "Normalize every centrality in ℓ₁. Otherwise, each centrality has its \
+                         traditional normalization: ℓ₂ for eigenvector centrality; none for the \
+                         geometric centralities and Katz's index; ℓ₁ for Seeley's index and \
+                         PageRank.",
+                    )
+                    .changed()
+                {
+                    options.normalization = if l1 {
+                        Normalization::L1
+                    } else {
+                        Normalization::Traditional
+                    };
+                    self.session.set_options(options);
+                }
+                item(ui, "Full Screen", Some(&FULLSCREEN), Command::Fullscreen);
                 ui.separator();
                 egui::gui_zoom::zoom_menu_buttons(ui);
             });
@@ -351,15 +393,21 @@ impl App {
     fn title(&self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
             ui.label(
-                RichText::new(self.session.centrality().name())
-                    .size(TITLE_SIZE)
-                    .strong(),
+                RichText::new(
+                    self.session
+                        .centrality()
+                        .name(self.session.graph().is_directed()),
+                )
+                .size(TITLE_SIZE)
+                .strong(),
             );
         });
     }
 
     /// Shows the slider of the parameter of the current centrality, if
-    /// any, labeled with its value and, for Katz's index, followed by ρ.
+    /// any, labeled with its value and followed, for Katz's index, by ρ, and
+    /// for eigenvector centrality and Seeley's index, by the switch of the
+    /// Cesàro means of the iterates and by the number *K* of iterations.
     fn param_slider(&mut self, ui: &mut egui::Ui) {
         let Some(mut x) = self.session.param() else {
             return;
@@ -385,9 +433,30 @@ impl App {
                 ui.add_space(ui.spacing().item_spacing.x);
                 ui.heading(format!("ρ = {rho:.3}"));
             }
+            if let Axis::Iteration(_) = axis {
+                ui.add_space(ui.spacing().item_spacing.x);
+                let mut options = self.session.options();
+                let mean = ui
+                    .checkbox(&mut options.mean, "Cesàro means")
+                    .on_hover_text(
+                        "Show, at each k, the mean of the first k + 1 iterates of the power \
+                         method (on A/ρ for eigenvector centrality), which converges to the \
+                         centrality even when the iterates do not",
+                    );
+                let iterations = ui
+                    .add(
+                        egui::DragValue::new(&mut options.iterations)
+                            .range(1..=MAX_ITERATIONS)
+                            .prefix("K = "),
+                    )
+                    .on_hover_text("The number of iterations of the power method");
+                if mean.changed() || iterations.changed() {
+                    self.session.set_options(options);
+                }
+            }
             ui.spacing_mut().slider_width = ui.available_width() - 8.0;
             let slider = match axis {
-                Axis::Iteration => egui::Slider::new(&mut x, 0.0..=ITERATIONS as f64).integer(),
+                Axis::Iteration(_) => egui::Slider::new(&mut x, 0.0..=axis.x_max()).integer(),
                 _ => egui::Slider::new(&mut x, 0.0..=1.0),
             };
             if ui
@@ -406,26 +475,28 @@ impl App {
 /// *x* with two decimals otherwise.
 fn param_label(axis: Axis, x: f64) -> String {
     match axis {
-        Axis::Iteration => format!("k = {x:.0}"),
+        Axis::Iteration(_) => format!("k = {x:.0}"),
         _ => format!("{} = {x:.2}", axis.label()),
     }
 }
 
-/// Shows one selectable item per centrality, grouped by family, with the
-/// current one checked and the shortcut of each; returns the centrality
-/// clicked, if any.
-fn centrality_menu(ui: &mut egui::Ui, current: Centrality) -> Option<Centrality> {
+/// Shows one selectable item per centrality, named as on a directed or an
+/// undirected graph, and grouped by family, with the current one checked and
+/// the shortcut of each; returns the centrality clicked, if any.
+fn centrality_menu(ui: &mut egui::Ui, current: Centrality, directed: bool) -> Option<Centrality> {
     let mut clicked = None;
+    let mut family = None;
     for (c, shortcut) in Centrality::ALL.into_iter().zip(&CENTRALITIES) {
+        if family.is_some_and(|f| f != c.family()) {
+            ui.separator();
+        }
+        family = Some(c.family());
         let shortcut = ui.ctx().format_shortcut(shortcut);
         if ui
-            .add(egui::Button::selectable(c == current, c.name()).shortcut_text(shortcut))
+            .add(egui::Button::selectable(c == current, c.name(directed)).shortcut_text(shortcut))
             .clicked()
         {
             clicked = Some(c);
-        }
-        if matches!(c, Centrality::Betweenness | Centrality::Seeley) {
-            ui.separator();
         }
     }
     clicked

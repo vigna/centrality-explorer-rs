@@ -33,16 +33,42 @@ const NOTE_COLOR: Color32 = Color32::from_gray(60);
 /// The distance of the note on vanishing iterates above 0, in pixels, so
 /// that it clears the dots on the curves.
 const NOTE_GAP: f64 = 10.0;
+/// The size of the note naming the centrality of the dashed curves.
+const DASHED_NOTE_SIZE: f32 = 18.0;
+/// The distance of the note naming the centrality of the dashed curves from
+/// the left end of the x-axis, as a fraction of its right end.
+const DASHED_NOTE_INSET: f64 = 0.01;
 /// The size of exponents, relative to the text they follow.
 const EXPONENT_SCALE: f32 = 0.65;
 /// The vertical margin below 0 and above the maximum, as a fraction of the
 /// maximum, so that end labels at the extremes are not clipped.
 const Y_MARGIN: f64 = 0.05;
 
-/// Returns the smallest multiple of 0.1 that is at least `x`, clamped to
-/// [0.1 . . 1].
+/// Returns a round upper bound for values up to `x` ≥ 0: if `x` ≤ 1, the
+/// smallest multiple of 0.1 that is at least `x`, clamped to [0.1 . . 1];
+/// otherwise, the smallest multiple of half the largest power of 10 not
+/// exceeding `x` that is at least `x`.
 pub fn nice_ceiling(x: f64) -> f64 {
-    ((x * 10.0 - 1e-9).ceil() / 10.0).clamp(0.1, 1.0)
+    if x <= 1.0 {
+        return ((x * 10.0 - 1e-9).ceil() / 10.0).clamp(0.1, 1.0);
+    }
+    let step = 10_f64.powi(x.log10().floor() as i32) / 2.0;
+    (x / step - 1e-9).ceil() * step
+}
+
+/// Returns the number of decimals of the labels of the y-axis up to
+/// `y_max`: two if `y_max` ≤ 1, and otherwise the fewest, at most two, that
+/// show exactly the multiples of `y_max` / 10.
+fn y_decimals(y_max: f64) -> usize {
+    if y_max <= 1.0 {
+        return 2;
+    }
+    (0..2)
+        .find(|&d| {
+            let step = y_max / 10.0 * 10_f64.powi(d);
+            (step - step.round()).abs() < 1e-9 * step
+        })
+        .map_or(2, |d| d as usize)
 }
 
 /// Groups end labels (index and value) whose values are closer than
@@ -123,11 +149,28 @@ pub fn nearest_curve(ranking: &Ranking, x: f64, y: f64, tol: f64) -> Option<usiz
         .map(|(i, _)| i)
 }
 
+/// Returns the distance between the labeled ticks of an axis of *K*
+/// iterations: the smallest of 1, 2, 5, 10, 20, 50, … that splits [0 . . *K*]
+/// into at most five intervals.
+fn iteration_unit(iterations: usize) -> f64 {
+    let mut unit = 1.0;
+    let mut multipliers = [2.0, 2.5, 2.0].into_iter().cycle();
+    while iterations as f64 > 5.0 * unit {
+        unit *= multipliers.next().expect("cycles are infinite");
+    }
+    unit
+}
+
 /// Returns the step sizes of the grid of the x-axis: tenths and twentieths
-/// for continuous axes, units for iterations, and none for flat curves.
+/// for continuous axes; for iterations, the [unit](iteration_unit), its
+/// half, and its tenth, replaced by 1 when they are not integers; and none
+/// for flat curves.
 fn x_steps(axis: Axis) -> Option<[f64; 3]> {
     match axis {
-        Axis::Iteration => Some([10.0, 5.0, 1.0]),
+        Axis::Iteration(iterations) => {
+            let unit = iteration_unit(iterations);
+            Some([unit, unit / 2.0, unit / 10.0].map(|s| if s.fract() == 0.0 { s } else { 1.0 }))
+        }
         Axis::Flat => None,
         _ => Some([0.5, 0.1, 0.05]),
     }
@@ -135,10 +178,11 @@ fn x_steps(axis: Axis) -> Option<[f64; 3]> {
 
 /// Returns the label of the tick at `x` of an axis, up to the right end of
 /// the curves: multiples of 0.1 with one decimal for continuous axes,
-/// multiples of 10 for iterations, and nothing otherwise.
+/// multiples of the [unit](iteration_unit) for iterations, and nothing
+/// otherwise.
 fn x_tick_label(axis: Axis, x: f64) -> String {
     let (unit, decimals) = match axis {
-        Axis::Iteration => (10.0, 0),
+        Axis::Iteration(iterations) => (iteration_unit(iterations), 0),
         Axis::Flat => return String::new(),
         _ => (0.1, 1),
     };
@@ -188,6 +232,7 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
     let axis = ranking.axis;
     let x_max = axis.x_max();
     let graph = session.graph();
+    let directed = graph.is_directed();
     let ghost = session.ghost();
     let ghost_max = ghost.map_or(0.0, |ghost| {
         ranking
@@ -197,11 +242,21 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
             .flatten()
             .fold(0.0, |m: f64, &x| m.max(x))
     });
+    let param = session.param();
     let y_max = if app.fixed_y {
         1.0
+    } else if ranking.unbounded {
+        // The y-axis follows the scores at the parameter, or at the last
+        // sample, where they are finite.
+        let max_at = |r: &Ranking| {
+            let x = param.unwrap_or(0.0).min(*r.xs.last().unwrap_or(&0.0));
+            r.scores(x).into_iter().fold(0.0, f64::max)
+        };
+        nice_ceiling(max_at(ranking).max(ghost.map_or(0.0, max_at)))
     } else {
         nice_ceiling(ranking.max_value().max(ghost_max))
     };
+    let y_decimals = y_decimals(y_max);
     let colors: Vec<Color32> = ranking
         .ids
         .iter()
@@ -219,7 +274,6 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
     let hovered = app
         .hovered
         .and_then(|id| ranking.ids.iter().position(|&x| x == id));
-    let param = session.param();
     let scores = session.scores();
     let points = |xs: &[f64], curve: &[f64]| -> PlotPoints<'_> {
         xs.iter()
@@ -253,10 +307,14 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
             [y_max, y_max / 2.0, y_max / 10.0]
         }))
         .x_axis_label(axis.label())
-        .y_axis_label(ranking.centrality.name())
-        .y_axis_formatter(|mark, _| {
+        .y_axis_label(format!(
+            "{} ({})",
+            ranking.centrality.name(directed),
+            ranking.norm.label()
+        ))
+        .y_axis_formatter(move |mark, _| {
             if mark.value >= -1e-9 {
-                format!("{:.2}", mark.value.abs())
+                format!("{:.y_decimals$}", mark.value.abs())
             } else {
                 String::new()
             }
@@ -301,7 +359,9 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
             }
             if let Some(x) = param {
                 plot_ui.vline(VLine::new(axis.label(), x).color(ACCENT).width(1.5));
-                for &i in &order {
+                // Scores may be infinite, as Katz's index at βρ = 1 when not
+                // normalized.
+                for &i in order.iter().filter(|&&i| scores[i].is_finite()) {
                     let point = vec![[x, scores[i]]];
                     plot_ui.points(
                         Points::new("", point.clone())
@@ -317,7 +377,13 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
                     );
                 }
             }
+            // End labels above the plot, as those of unbounded scores, are
+            // grouped at its top, and wrapped within the margin on the right
+            // of the curves.
             let ends = end_values(ranking);
+            let above: Vec<bool> = ends.iter().map(|&(_, v)| v > y_max).collect();
+            let ends: Vec<_> = ends.into_iter().map(|(i, v)| (i, v.min(y_max))).collect();
+            let margin = plot_ui.transform().frame().width() * ((X_END - LABEL_X) / X_END) as f32;
             for (value, members) in group_end_labels(&ends, LABEL_GAP / px_per_unit) {
                 let mut job = LayoutJob::default();
                 for (k, &i) in members.iter().enumerate() {
@@ -329,10 +395,45 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
                     };
                     job.append(&text, 0.0, format);
                 }
+                let (y, anchor) = if members.iter().any(|&i| above[i]) {
+                    ((1.0 + Y_MARGIN) * y_max, Align2::LEFT_TOP)
+                } else {
+                    (value, Align2::LEFT_CENTER)
+                };
+                job.wrap.max_width = margin;
+                // A laid-out galley, as plot texts override the wrapping of
+                // layout jobs.
+                let galley = plot_ui.ctx().fonts_mut(|f| f.layout_job(job));
                 plot_ui.text(
-                    Text::new("", PlotPoint::new(x_max * LABEL_X, value), job)
-                        .anchor(Align2::LEFT_CENTER)
+                    Text::new("", PlotPoint::new(x_max * LABEL_X, y), galley)
+                        .anchor(anchor)
                         .allow_hover(false),
+                );
+            }
+            // At the top left, the centrality of the dashed curves, if they are
+            // not the current centrality on the graph before the last edit.
+            if let Some(ghost) = ghost.filter(|g| g.centrality != ranking.centrality) {
+                let format = TextFormat {
+                    background,
+                    ..TextFormat::simple(FontId::proportional(DASHED_NOTE_SIZE), NOTE_COLOR)
+                };
+                let mut job = LayoutJob::default();
+                job.append(
+                    &format!("Dashed: {}", ghost.centrality.name(directed)),
+                    0.0,
+                    format,
+                );
+                plot_ui.text(
+                    Text::new(
+                        "",
+                        PlotPoint::new(
+                            x_max * DASHED_NOTE_INSET,
+                            (1.0 + Y_MARGIN) * y_max - NOTE_GAP / px_per_unit,
+                        ),
+                        job,
+                    )
+                    .anchor(Align2::LEFT_TOP)
+                    .allow_hover(false),
                 );
             }
             // At the bottom right of the curves, just above 0, masking the
@@ -374,7 +475,7 @@ pub(crate) fn plot(app: &mut App, ui: &mut egui::Ui) {
 mod tests {
     use super::*;
     use crate::graph::Graph;
-    use crate::rank::{Centrality, ITERATIONS};
+    use crate::rank::{Centrality, DEFAULT_ITERATIONS};
 
     /// Returns eigenvector centrality on the 4-cycle *a* → *b* → *c* → *d* →
     /// *a*, and on the same graph after deleting *d* → *a*, that is, on the
@@ -397,6 +498,38 @@ mod tests {
         assert!((nice_ceiling(0.5) - 0.5).abs() < 1e-12);
         assert!((nice_ceiling(0.0) - 0.1).abs() < 1e-12);
         assert!((nice_ceiling(1.0) - 1.0).abs() < 1e-12);
+        assert!((nice_ceiling(1.2) - 1.5).abs() < 1e-12);
+        assert!((nice_ceiling(3.7) - 4.0).abs() < 1e-12);
+        assert!((nice_ceiling(10.0) - 10.0).abs() < 1e-12);
+        assert!((nice_ceiling(37.0) - 40.0).abs() < 1e-12);
+        assert!((nice_ceiling(1234.0) - 1500.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_y_decimals() {
+        assert_eq!(y_decimals(0.4), 2);
+        assert_eq!(y_decimals(1.0), 2);
+        assert_eq!(y_decimals(1.5), 2);
+        assert_eq!(y_decimals(3.0), 1);
+        assert_eq!(y_decimals(15.0), 1);
+        assert_eq!(y_decimals(30.0), 0);
+        assert_eq!(y_decimals(1500.0), 0);
+    }
+
+    #[test]
+    fn test_iteration_ticks() {
+        for (iterations, unit) in [(1, 1.0), (7, 2.0), (20, 5.0), (50, 10.0), (51, 20.0)] {
+            assert_eq!(iteration_unit(iterations), unit, "{iterations}");
+        }
+        assert_eq!(iteration_unit(1000), 200.0);
+        assert_eq!(
+            x_steps(Axis::Iteration(DEFAULT_ITERATIONS)),
+            Some([10.0, 5.0, 1.0])
+        );
+        assert_eq!(x_steps(Axis::Iteration(20)), Some([5.0, 1.0, 1.0]));
+        assert_eq!(x_tick_label(Axis::Iteration(20), 15.0), "15");
+        assert_eq!(x_tick_label(Axis::Iteration(20), 12.0), "");
+        assert_eq!(x_tick_label(Axis::Iteration(17), 20.0), "");
     }
 
     #[test]
@@ -444,7 +577,7 @@ mod tests {
             vec![(0, 0.0), (1, 0.0), (2, 0.0), (3, 0.0)]
         );
         let at_k: Vec<_> = path
-            .scores(ITERATIONS as f64)
+            .scores(DEFAULT_ITERATIONS as f64)
             .into_iter()
             .enumerate()
             .collect();
@@ -458,7 +591,10 @@ mod tests {
         assert_eq!(nearest_curve(&path, 3.0, 1.0, 0.01), Some(3));
         // Past it, no curve is drawn, and every score is 0
         assert_eq!(nearest_curve(&path, 3.5, 1.0, 0.01), None);
-        assert_eq!(nearest_curve(&path, ITERATIONS as f64, 1.0, 0.01), None);
-        assert!(nearest_curve(&path, ITERATIONS as f64, 0.0, 0.01).is_some());
+        assert_eq!(
+            nearest_curve(&path, DEFAULT_ITERATIONS as f64, 1.0, 0.01),
+            None
+        );
+        assert!(nearest_curve(&path, DEFAULT_ITERATIONS as f64, 0.0, 0.01).is_some());
     }
 }

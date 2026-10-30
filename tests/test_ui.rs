@@ -42,7 +42,7 @@ fn test_alpha_arrows() {
 }
 
 use centrality_explorer::graph::{Graph, NodeId};
-use centrality_explorer::rank::{Centrality, ITERATIONS};
+use centrality_explorer::rank::{Centrality, DEFAULT_ITERATIONS};
 
 fn screen(h: &Harness<'static, App>, p: [f32; 2]) -> egui::Pos2 {
     h.state().canvas_rect().min + egui::vec2(p[0], p[1])
@@ -385,10 +385,11 @@ fn test_centrality_shortcuts() {
     // Menu order: geometric, spectral (eigenvector), spectral (damped sum),
     // unnormalized (adjacency matrix) before normalized (walk matrix)
     for (key, c) in [
-        (egui::Key::Num7, Centrality::PageRank),
-        (egui::Key::Num6, Centrality::Katz),
-        (egui::Key::Num5, Centrality::Seeley),
-        (egui::Key::Num4, Centrality::Eigenvector),
+        (egui::Key::Num8, Centrality::PageRank),
+        (egui::Key::Num7, Centrality::Katz),
+        (egui::Key::Num6, Centrality::Seeley),
+        (egui::Key::Num5, Centrality::Eigenvector),
+        (egui::Key::Num2, Centrality::Closeness),
     ] {
         h.key_press_modifiers(cmd_alt, key);
         h.run();
@@ -397,7 +398,7 @@ fn test_centrality_shortcuts() {
     let before = h.state().session().graph().clone();
     h.key_press_modifiers(cmd_alt, egui::Key::Num1);
     h.run();
-    assert_eq!(h.state().session().centrality(), Centrality::Closeness);
+    assert_eq!(h.state().session().centrality(), Centrality::InDegree);
     // Cmd-Alt-1 is not taken for Cmd-1, the force-directed layout
     assert_eq!(h.state().session().graph(), &before);
 }
@@ -411,7 +412,7 @@ fn test_iteration_arrows() {
         .set_centrality(Centrality::Seeley);
     h.key_press(egui::Key::ArrowLeft);
     h.run();
-    assert_eq!(h.state().session().iteration(), ITERATIONS - 1);
+    assert_eq!(h.state().session().iteration(), DEFAULT_ITERATIONS - 1);
 }
 
 /// With no arcs, the eigenvector iterates vanish at k = 1, so the curves
@@ -428,8 +429,88 @@ fn test_vanished_eigenvector_hover() {
     h.key_press(egui::Key::ArrowLeft);
     h.run();
     let session = h.state().session();
-    assert_eq!(session.iteration(), ITERATIONS - 1);
+    assert_eq!(session.iteration(), DEFAULT_ITERATIONS - 1);
     assert!(session.scores().iter().all(|&x| x == 0.0));
+}
+
+#[test]
+fn test_rotate_and_flip_menu() {
+    use egui_kittest::kittest::Queryable;
+    let (mut h, a, b) = two_node_app();
+    let pos = |h: &Harness<'static, App>, id| h.state().session().graph().node(id).unwrap().pos;
+    let click = |h: &mut Harness<'static, App>, label: &str| {
+        h.get_by_label("Graph").click();
+        h.run();
+        h.get_by_label(label).click();
+        // Through the animation of the nodes to their new positions
+        h.run_steps(90);
+    };
+    // Nodes at (150, 300) and (400, 300): the center is (275, 300)
+    click(&mut h, "Flip Horizontally");
+    assert_eq!((pos(&h, a), pos(&h, b)), ([400.0, 300.0], [150.0, 300.0]));
+    click(&mut h, "Rotate 90° Clockwise");
+    assert_eq!((pos(&h, a), pos(&h, b)), ([275.0, 425.0], [275.0, 175.0]));
+    click(&mut h, "Flip Vertically");
+    assert_eq!((pos(&h, a), pos(&h, b)), ([275.0, 175.0], [275.0, 425.0]));
+    // Each is one undo step
+    for _ in 0..3 {
+        h.state_mut().session_mut().undo();
+    }
+    assert_eq!((pos(&h, a), pos(&h, b)), ([150.0, 300.0], [400.0, 300.0]));
+}
+
+#[test]
+fn test_switch_within_family_shows_previous() {
+    let (mut h, _, _) = two_node_app();
+    let cmd_alt = egui::Modifiers::COMMAND | egui::Modifiers::ALT;
+    h.key_press_modifiers(cmd_alt, egui::Key::Num7);
+    h.run();
+    let ghost = h.state().session().ghost().map(|g| g.centrality);
+    assert_eq!(ghost, Some(Centrality::PageRank));
+    h.key_press_modifiers(cmd_alt, egui::Key::Num8);
+    h.run();
+    let ghost = h.state().session().ghost().map(|g| g.centrality);
+    assert_eq!(ghost, Some(Centrality::Katz));
+}
+
+#[test]
+fn test_mean_checkbox() {
+    use egui_kittest::kittest::Queryable;
+    let (mut h, _, _) = two_node_app();
+    h.state_mut()
+        .session_mut()
+        .set_centrality(Centrality::Eigenvector);
+    h.run();
+    h.get_by_label("Cesàro means").click();
+    h.run();
+    assert!(h.state().session().options().mean);
+    // The checkbox is shown only for the power method
+    h.state_mut().session_mut().set_centrality(Centrality::Katz);
+    h.run();
+    assert!(h.query_by_label("Cesàro means").is_none());
+}
+
+#[test]
+fn test_l1_normalization_menu() {
+    use centrality_explorer::rank::{Norm, Normalization};
+    use egui_kittest::kittest::Queryable;
+    let (mut h, _, _) = two_node_app();
+    h.state_mut()
+        .session_mut()
+        .set_centrality(Centrality::Eigenvector);
+    h.get_by_label("View").click();
+    h.run();
+    // Checked by default: unchecking it switches to the traditional
+    // normalizations
+    assert_eq!(
+        h.state().session().options().normalization,
+        Normalization::L1
+    );
+    h.get_by_label("ℓ₁ normalization").click();
+    h.run();
+    let session = h.state().session();
+    assert_eq!(session.options().normalization, Normalization::Traditional);
+    assert_eq!(session.ranking().norm, Norm::L2);
 }
 
 #[test]
@@ -444,6 +525,25 @@ fn test_every_centrality_renders() {
         h.run();
         assert_eq!(h.state().session().ranking().centrality, c);
     }
+    // Traditional normalization, with Katz's index at βρ = 1, where the
+    // scores are infinite
+    let options = centrality_explorer::rank::Options {
+        normalization: centrality_explorer::rank::Normalization::Traditional,
+        mean: true,
+        ..h.state().session().options()
+    };
+    h.state_mut().session_mut().set_options(options);
+    for c in Centrality::ALL {
+        h.state_mut().session_mut().set_centrality(c);
+        h.run();
+        h.state_mut().session_mut().set_param(1.0e9);
+        h.hover_at(egui::pos2(900.0, 300.0));
+        h.run();
+    }
+    assert!(h.state().session().scores().iter().all(|x| x.is_finite()));
+    h.state_mut().session_mut().set_centrality(Centrality::Katz);
+    h.run();
+    assert!(h.state().session().scores().iter().any(|x| x.is_infinite()));
 }
 
 /// The directory of the screenshots in the README's Examples section.
@@ -458,12 +558,14 @@ fn test_render_centralities() {
     let mut h = wgpu_harness();
     h.run();
     let (before, after, _) = lecture_example(&h);
-    h.state_mut().session_mut().commit(before);
-    h.state_mut().session_mut().commit(after);
-    h.run();
     std::fs::create_dir_all(SCREENSHOTS).unwrap();
     for c in Centrality::ALL {
-        h.state_mut().session_mut().set_centrality(c);
+        // The edit after the switch, so that the dashed curves show the
+        // graph before the edit, rather than the previous centrality
+        let session = h.state_mut().session_mut();
+        session.set_centrality(c);
+        session.commit(before.clone());
+        session.commit(after.clone());
         h.run();
         // The lowercase variant name, as in files: closeness, harmonic, …
         let name = format!("{c:?}").to_lowercase();

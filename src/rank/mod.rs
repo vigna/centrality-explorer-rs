@@ -7,9 +7,9 @@ mod power;
 mod scc;
 mod spectral;
 
-pub use geometric::{betweenness, closeness, harmonic};
+pub use geometric::{betweenness, closeness, harmonic, indegree};
 pub use pagerank::{Chain, limit, pagerank, terminal_components};
-pub use power::{eigenvector_iterates, seeley_iterates};
+pub use power::{eigenvector_iterates, eigenvector_means, seeley_iterates, seeley_means};
 pub use scc::{sccs, terminal_sccs};
 pub use spectral::{Spectrum, katz};
 
@@ -21,14 +21,20 @@ use crate::graph::{Graph, NodeId};
 /// for Katz's index and PageRank, which adds the right end, 1.
 pub const SAMPLES: usize = 256;
 
-/// The number *K* of iterations of the power method computing Seeley's index
-/// and eigenvector centrality shown by [`Ranking`].
-pub const ITERATIONS: usize = 50;
+/// The default number *K* of iterations of the power method computing
+/// Seeley's index and eigenvector centrality shown by [`Ranking`].
+pub const DEFAULT_ITERATIONS: usize = 50;
+
+/// The maximum number *K* of iterations of the power method computing
+/// Seeley's index and eigenvector centrality shown by [`Ranking`].
+pub const MAX_ITERATIONS: usize = 1000;
 
 /// A centrality.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Centrality {
+    /// Indegree (degree, on undirected graphs).
+    InDegree,
     /// Closeness centrality.
     Closeness,
     /// Harmonic centrality.
@@ -46,13 +52,29 @@ pub enum Centrality {
     PageRank,
 }
 
+/// A family of centralities, whose curves have the same kind of
+/// [x-axis](Axis).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Family {
+    /// Indegree, closeness, harmonic centrality, and betweenness, whose curves
+    /// are [flat](Axis::Flat).
+    Geometric,
+    /// Eigenvector centrality and Seeley's index, whose curves follow the
+    /// [iterations](Axis::Iteration) of the power method.
+    Eigenvector,
+    /// Katz's index and PageRank, whose curves follow a damping factor in
+    /// [0 . . 1].
+    DampedSum,
+}
+
 impl Centrality {
     /// All centralities, in menu order, that is, by family: geometric
-    /// (closeness, harmonic, betweenness), spectral by eigenvector
+    /// (indegree, closeness, harmonic, betweenness), spectral by eigenvector
     /// (eigenvector centrality, Seeley's index), and spectral by damped sum
     /// (Katz's index, PageRank); in each spectral family, the centrality of
     /// the adjacency matrix comes before that of its normalization.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
+        Self::InDegree,
         Self::Closeness,
         Self::Harmonic,
         Self::Betweenness,
@@ -62,9 +84,13 @@ impl Centrality {
         Self::PageRank,
     ];
 
-    /// Returns the name of the centrality, for display.
-    pub const fn name(self) -> &'static str {
+    /// Returns the name of the centrality, for display on a directed or an
+    /// undirected graph: only indegree changes, to degree, on undirected
+    /// graphs.
+    pub const fn name(self, directed: bool) -> &'static str {
         match self {
+            Self::InDegree if directed => "Indegree",
+            Self::InDegree => "Degree",
             Self::PageRank => "PageRank",
             Self::Katz => "Katz's Index",
             Self::Seeley => "Seeley's Index",
@@ -74,6 +100,114 @@ impl Centrality {
             Self::Betweenness => "Betweenness Centrality",
         }
     }
+
+    /// Returns the family of the centrality.
+    pub const fn family(self) -> Family {
+        match self {
+            Self::InDegree | Self::Closeness | Self::Harmonic | Self::Betweenness => {
+                Family::Geometric
+            }
+            Self::Eigenvector | Self::Seeley => Family::Eigenvector,
+            Self::Katz | Self::PageRank => Family::DampedSum,
+        }
+    }
+}
+
+/// The normalization of score vectors chosen by the user (see
+/// [`norm`](Self::norm)).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Normalization {
+    /// Every centrality is normalized in ℓ1, so that scores are comparable
+    /// across centralities.
+    #[default]
+    L1,
+    /// Every centrality has its traditional normalization.
+    Traditional,
+}
+
+impl Normalization {
+    /// Returns the norm of the score vectors of a centrality under this
+    /// normalization.
+    ///
+    /// Under [`L1`](Self::L1), it is always [`Norm::L1`]. Under
+    /// [`Traditional`](Self::Traditional), it is [`Norm::L1`] for Seeley's
+    /// index and PageRank, which are distributions; [`Norm::L2`] for
+    /// eigenvector centrality; and [`Norm::None`] for the geometric
+    /// centralities and Katz's index.
+    pub const fn norm(self, centrality: Centrality) -> Norm {
+        match (self, centrality) {
+            (Self::L1, _) | (_, Centrality::Seeley | Centrality::PageRank) => Norm::L1,
+            (_, Centrality::Eigenvector) => Norm::L2,
+            _ => Norm::None,
+        }
+    }
+}
+
+/// The norm of the score vectors of a [`Ranking`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Norm {
+    /// Divided by the sum of their entries, which are nonnegative.
+    L1,
+    /// Divided by their Euclidean norm.
+    L2,
+    /// Not normalized.
+    None,
+}
+
+impl Norm {
+    /// Returns the description of the norm, for display: "ℓ₁-normalized",
+    /// "ℓ₂-normalized", or "not normalized".
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::L1 => "ℓ₁-normalized",
+            Self::L2 => "ℓ₂-normalized",
+            Self::None => "not normalized",
+        }
+    }
+
+    /// Returns a vector normalized in this norm; a vector that is
+    /// identically zero is unchanged.
+    fn apply(self, v: Vec<f64>) -> Vec<f64> {
+        match self {
+            Self::L1 => normalized(v),
+            Self::L2 => {
+                let norm = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+                if norm > 0.0 {
+                    v.into_iter().map(|x| x / norm).collect()
+                } else {
+                    v
+                }
+            }
+            Self::None => v,
+        }
+    }
+}
+
+/// The options of a [`Ranking`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Options {
+    /// The normalization of the score vectors.
+    pub normalization: Normalization,
+    /// The number *K* of iterations of the power method computing
+    /// eigenvector centrality and Seeley's index, in
+    /// [1 . . [`MAX_ITERATIONS`]].
+    pub iterations: usize,
+    /// Whether the curves of eigenvector centrality and Seeley's index show
+    /// the means of the iterates of the power method (see
+    /// [`eigenvector_means`] and [`seeley_means`]) rather than the iterates.
+    pub mean: bool,
+}
+
+impl Default for Options {
+    /// ℓ1 normalization and [`DEFAULT_ITERATIONS`] iterations, showing the
+    /// iterates.
+    fn default() -> Self {
+        Self {
+            normalization: Normalization::L1,
+            iterations: DEFAULT_ITERATIONS,
+            mean: false,
+        }
+    }
 }
 
 /// The x-axis of the curves of a [`Ranking`].
@@ -81,9 +215,10 @@ impl Centrality {
 pub enum Axis {
     /// No parameter: the curves are constant.
     Flat,
-    /// The iteration *k* = 0, 1, …, [`ITERATIONS`] of the power method
-    /// computing eigenvector centrality or Seeley's index.
-    Iteration,
+    /// The iteration *k* = 0, 1, …, *K* of the power method computing
+    /// eigenvector centrality or Seeley's index, where *K* is the number of
+    /// iterations.
+    Iteration(usize),
     /// βρ ∈ [0 . . 1], where β is the parameter of Katz's index and ρ > 0 is
     /// the spectral radius of the adjacency matrix.
     BetaRho,
@@ -95,22 +230,23 @@ pub enum Axis {
 
 impl Axis {
     /// Returns the label of the axis: the empty string for
-    /// [`Flat`](Self::Flat), and "k", "βρ", "β", or "α" otherwise.
+    /// [`Flat`](Self::Flat), "k (iterations of the power method)" for
+    /// [`Iteration`](Self::Iteration), and "βρ", "β", or "α" otherwise.
     pub const fn label(self) -> &'static str {
         match self {
             Self::Flat => "",
-            Self::Iteration => "k",
+            Self::Iteration(_) => "k (iterations of the power method)",
             Self::BetaRho => "βρ",
             Self::Beta => "β",
             Self::Alpha => "α",
         }
     }
 
-    /// Returns the right end of the axis: [`ITERATIONS`] for
+    /// Returns the right end of the axis: the number *K* of iterations for
     /// [`Iteration`](Self::Iteration), and 1 otherwise.
     pub const fn x_max(self) -> f64 {
         match self {
-            Self::Iteration => ITERATIONS as f64,
+            Self::Iteration(iterations) => iterations as f64,
             _ => 1.0,
         }
     }
@@ -149,12 +285,23 @@ enum Exact {
     /// The chain of the graph, for PageRank.
     PageRank(Chain),
     /// For Katz's index, the successor lists; ρ, or 1 if ρ = 0, so that
-    /// β = *x* / `scale`; and the limit at βρ = 1, if ρ > 0.
+    /// β = *x* / `scale`; and, if ρ > 0, the limit at βρ = 1 of the scores
+    /// and of the shares (see [`Ranking::shares`]), which differ only if the
+    /// scores are not normalized: then, they are infinite on the nodes
+    /// reachable from a dominant class
+    /// ([`Spectrum::katz_unnormalized_limit`]).
     Katz {
         succ: Vec<Vec<usize>>,
         scale: f64,
-        limit: Option<Vec<f64>>,
+        limit: Option<KatzLimit>,
     },
+}
+
+/// The limit of Katz's index at βρ = 1, when ρ > 0.
+#[derive(Clone, Debug)]
+struct KatzLimit {
+    scores: Vec<f64>,
+    shares: Vec<f64>,
 }
 
 /// The curves of a centrality on a graph, that is, the score of each node
@@ -162,30 +309,41 @@ enum Exact {
 /// [x-axis](Axis).
 ///
 /// All score vectors, in the curves and from [`scores`](Self::scores), are
-/// normalized to sum to 1, except for those that are identically zero.
+/// normalized in the [norm](Self::norm) of the ranking, except for those that
+/// are identically zero; [`shares`](Self::shares) are always normalized in ℓ1.
 #[derive(Clone, Debug)]
 pub struct Ranking {
     /// The centrality.
     pub centrality: Centrality,
+    /// The norm of the score vectors (see [`Normalization::norm`]).
+    pub norm: Norm,
     /// The x-axis: [`Axis::Flat`] for closeness, harmonic, and betweenness;
-    /// [`Axis::Iteration`] for eigenvector centrality and Seeley's index;
-    /// for Katz's index, [`Axis::BetaRho`] if ρ > 0 and [`Axis::Beta`] if
-    /// ρ = 0; and [`Axis::Alpha`] for PageRank.
+    /// [`Axis::Iteration`], with the number *K* of iterations of the power
+    /// method, for eigenvector centrality and Seeley's index; for Katz's
+    /// index, [`Axis::BetaRho`] if ρ > 0 and [`Axis::Beta`] if ρ = 0; and
+    /// [`Axis::Alpha`] for PageRank.
     pub axis: Axis,
     /// The node identifiers, in node index order.
     pub ids: Vec<NodeId>,
     /// The sampled values of the x-axis: 0 and 1 for the
-    /// [flat](Axis::Flat) centralities; the iterations *k* = 0, 1, …,
-    /// [`ITERATIONS`] for eigenvector centrality and Seeley's index, stopping
-    /// before [`vanished`](Self::vanished), if any; and *k* / [`SAMPLES`] for
-    /// 0 ≤ *k* < [`SAMPLES`], followed by 1, for Katz's index and PageRank.
+    /// [flat](Axis::Flat) centralities; the iterations *k* = 0, 1, …, *K* for
+    /// eigenvector centrality and Seeley's index, stopping before
+    /// [`vanished`](Self::vanished), if any; and *k* / [`SAMPLES`] for 0 ≤
+    /// *k* < [`SAMPLES`], followed by 1 unless the scores are
+    /// [unbounded](Self::unbounded), for Katz's index and PageRank.
     pub xs: Vec<f64>,
     /// `curves[i][k]` is the score of `ids[i]` at `xs[k]`.
     ///
-    /// For Katz's index with ρ > 0, the score at βρ = 1 is the exact
-    /// [limit](Spectrum::katz_limit); for the [flat](Axis::Flat)
-    /// centralities, the two samples are equal.
+    /// For Katz's index with ρ > 0, the score at βρ = 1, if sampled, is the
+    /// exact [limit](Spectrum::katz_limit); for the [flat](Axis::Flat)
+    /// centralities, the two samples are equal; for eigenvector centrality
+    /// and Seeley's index, the scores are the iterates of the power method
+    /// or, if so [requested](Options::mean), their means.
     pub curves: Vec<Vec<f64>>,
+    /// Whether the scores diverge at the right end of the axis, as those of
+    /// Katz's index with ρ > 0, when [not normalized](Norm::None), do as βρ
+    /// → 1; then, the right end is not sampled.
+    pub unbounded: bool,
     /// The groups of nodes to shade, each sorted by node index, and sorted
     /// by their first node.
     ///
@@ -206,16 +364,32 @@ pub struct Ranking {
     /// eigenvector centrality; `None` otherwise.
     pub rho: Option<f64>,
     /// For eigenvector centrality, the first iteration *k* such that **1**
-    /// *A*<sup>*k*</sup> = 0, if *k* ≤ [`ITERATIONS`]; the curves stop at *k*
-    /// − 1.
+    /// *A*<sup>*k*</sup> = 0, if *k* ≤ *K*; the curves stop at *k* − 1. Since
+    /// the iterates vanish only if ρ = 0, and their means are shown only if ρ >
+    /// 0, the means never vanish.
     pub vanished: Option<usize>,
     /// What [`scores`](Self::scores) needs besides the curves.
     exact: Exact,
 }
 
 impl Ranking {
-    /// Computes the curves of a centrality on a graph.
+    /// Computes the curves of a centrality on a graph, with the
+    /// [default](Options::default) options.
     pub fn new(graph: &Graph, centrality: Centrality) -> Self {
+        Self::with_options(graph, centrality, Options::default())
+    }
+
+    /// Computes the curves of a centrality on a graph, with the given options.
+    ///
+    /// The means of the iterates of eigenvector centrality are shown only if
+    /// ρ > 0: if ρ = 0, there are no means, and the curves show the iterates,
+    /// which vanish.
+    ///
+    /// Betweenness, when not normalized, counts the shortest paths of an
+    /// undirected graph once, rather than once in each direction.
+    pub fn with_options(graph: &Graph, centrality: Centrality, options: Options) -> Self {
+        let iterations = options.iterations;
+        let norm = options.normalization.norm(centrality);
         let ids: Vec<NodeId> = graph.nodes().iter().map(|node| node.id).collect();
         let n = ids.len();
         let succ = graph.successors();
@@ -228,10 +402,12 @@ impl Ranking {
         // The defaults are those of the flat centralities.
         let mut r = Self {
             centrality,
+            norm,
             axis: Axis::Flat,
             ids,
             xs: vec![0.0, 1.0],
             curves: Vec::new(),
+            unbounded: false,
             hulls: Vec::new(),
             hull_label: "",
             dangling: Vec::new(),
@@ -256,10 +432,14 @@ impl Ranking {
                     r.exact = Exact::PageRank(chain);
                     r.curves = curves_of(r.xs.iter().map(|&x| r.scores(x)), n);
                 } else {
-                    r.axis = Axis::Iteration;
-                    r.xs = (0..=ITERATIONS).map(|k| k as f64).collect();
-                    let iterates = seeley_iterates(&chain, ITERATIONS);
-                    r.curves = curves_of(iterates.into_iter().map(normalized), n);
+                    r.axis = Axis::Iteration(iterations);
+                    r.xs = (0..=iterations).map(|k| k as f64).collect();
+                    let vectors = if options.mean {
+                        seeley_means(&chain, iterations)
+                    } else {
+                        seeley_iterates(&chain, iterations)
+                    };
+                    r.curves = curves_of(vectors.into_iter().map(|v| norm.apply(v)), n);
                 }
             }
             Centrality::Katz => {
@@ -271,10 +451,19 @@ impl Ranking {
                     r.axis = Axis::BetaRho;
                     r.hulls = r.node_ids(spectrum.dominant_classes());
                     r.hull_label = "dominant";
+                    let shares = normalized(spectrum.katz_limit());
+                    let scores = match norm {
+                        Norm::None => spectrum.katz_unnormalized_limit(),
+                        _ => norm.apply(shares.clone()),
+                    };
+                    r.unbounded = norm == Norm::None;
+                    if r.unbounded {
+                        r.xs.pop();
+                    }
                     r.exact = Exact::Katz {
                         succ,
                         scale: rho,
-                        limit: Some(normalized(spectrum.katz_limit())),
+                        limit: Some(KatzLimit { scores, shares }),
                     };
                 } else {
                     r.axis = Axis::Beta;
@@ -288,22 +477,37 @@ impl Ranking {
             }
             Centrality::Eigenvector => {
                 let spectrum = Spectrum::new(&succ);
-                r.rho = Some(spectrum.rho());
+                let rho = spectrum.rho();
+                r.rho = Some(rho);
                 r.hulls = r.node_ids(spectrum.dominant_classes());
                 r.hull_label = "dominant";
-                r.axis = Axis::Iteration;
-                let iterates = eigenvector_iterates(&succ, ITERATIONS);
-                let len = iterates.len();
-                r.vanished = (len <= ITERATIONS).then_some(len);
+                r.axis = Axis::Iteration(iterations);
+                let vectors = if options.mean && rho > 0.0 {
+                    eigenvector_means(&succ, rho, iterations)
+                } else {
+                    eigenvector_iterates(&succ, iterations)
+                };
+                let len = vectors.len();
+                r.vanished = (len <= iterations).then_some(len);
                 r.xs = (0..len).map(|k| k as f64).collect();
-                r.curves = curves_of(iterates.into_iter().map(normalized), n);
+                r.curves = curves_of(vectors.into_iter().map(|v| norm.apply(v)), n);
             }
-            Centrality::Closeness | Centrality::Harmonic | Centrality::Betweenness => {
-                let scores = normalized(match centrality {
+            Centrality::InDegree
+            | Centrality::Closeness
+            | Centrality::Harmonic
+            | Centrality::Betweenness => {
+                let mut scores = match centrality {
+                    Centrality::InDegree => indegree(&succ),
                     Centrality::Closeness => closeness(&succ),
                     Centrality::Harmonic => harmonic(&succ),
                     _ => betweenness(&succ),
-                });
+                };
+                if centrality == Centrality::Betweenness && !graph.is_directed() {
+                    for x in &mut scores {
+                        *x /= 2.0;
+                    }
+                }
+                let scores = norm.apply(scores);
                 r.curves = curves_of([scores.clone(), scores], n);
             }
         }
@@ -324,19 +528,22 @@ impl Ranking {
     /// - [`Axis::Alpha`]: PageRank with damping factor *x*, clamped to [0,
     ///   1].
     /// - [`Axis::BetaRho`]: Katz's index with β = *x* / ρ, for *x* clamped
-    ///   to [0 . . 1), and its exact limit for *x* ≥ 1.
+    ///   to [0 . . 1), and its exact limit for *x* ≥ 1, which is infinite on
+    ///   some nodes if the scores are [unbounded](Self::unbounded).
     /// - [`Axis::Beta`]: Katz's index with β = *x*, clamped to [0 . . 1].
-    /// - [`Axis::Iteration`]: the iterate at *k* = *x*, rounded, or zero if
-    ///   *k* is beyond the last sample, as it happens from the iteration at
-    ///   which the iterates [vanish](Self::vanished).
+    /// - [`Axis::Iteration`]: the iterate (or the mean) at *k* = *x*,
+    ///   rounded, or zero if *k* is beyond the last sample, as it happens
+    ///   from the iteration at which the iterates [vanish](Self::vanished).
     /// - [`Axis::Flat`]: the scores, whatever *x*.
     pub fn scores(&self, x: f64) -> Vec<f64> {
         match &self.exact {
             Exact::PageRank(chain) => normalized(pagerank(chain, x.clamp(0.0, 1.0))),
             Exact::Katz {
                 limit: Some(limit), ..
-            } if x >= 1.0 => limit.clone(),
-            Exact::Katz { succ, scale, .. } => normalized(katz(succ, x.clamp(0.0, 1.0) / scale)),
+            } if x >= 1.0 => limit.scores.clone(),
+            Exact::Katz { succ, scale, .. } => {
+                self.norm.apply(katz(succ, x.clamp(0.0, 1.0) / scale))
+            }
             Exact::Curves => {
                 let k = match self.axis {
                     Axis::Flat => 0,
@@ -348,6 +555,19 @@ impl Ranking {
                     vec![0.0; self.ids.len()]
                 }
             }
+        }
+    }
+
+    /// Returns the shares at `x` on the [x-axis](Self::axis), aligned with
+    /// [`ids`](Self::ids): the [scores](Self::scores) normalized in ℓ1, or,
+    /// for Katz's index at βρ ≥ 1, the normalized
+    /// [limit](Spectrum::katz_limit), even when the scores are infinite.
+    pub fn shares(&self, x: f64) -> Vec<f64> {
+        match &self.exact {
+            Exact::Katz {
+                limit: Some(limit), ..
+            } if x >= 1.0 => limit.shares.clone(),
+            _ => normalized(self.scores(x)),
         }
     }
 
@@ -495,28 +715,72 @@ pub(crate) mod tests {
         ]
     }
 
+    /// Asserts that a vector is identically zero or has norm 1 in a norm
+    /// (any vector passes if it is not normalized).
+    fn assert_normalized(v: &[f64], norm: Norm) {
+        let size = match norm {
+            Norm::L1 => v.iter().sum::<f64>(),
+            Norm::L2 => v.iter().map(|x| x * x).sum::<f64>(),
+            Norm::None => return,
+        };
+        assert!(
+            size.abs() < 1e-12 || (size - 1.0).abs() < 1e-12,
+            "{norm:?} {v:?}"
+        );
+    }
+
+    /// The default options; traditional normalization; means; both; and
+    /// seven iterations.
+    fn all_options() -> Vec<Options> {
+        let default = Options::default();
+        let traditional = Options {
+            normalization: Normalization::Traditional,
+            ..default
+        };
+        vec![
+            default,
+            traditional,
+            Options {
+                mean: true,
+                ..default
+            },
+            Options {
+                mean: true,
+                ..traditional
+            },
+            Options {
+                iterations: 7,
+                ..default
+            },
+        ]
+    }
+
     #[test]
     fn test_every_centrality_on_small_graphs() {
         for g in small_graphs() {
             for c in Centrality::ALL {
-                let r = Ranking::new(&g, c);
-                assert_eq!(r.centrality, c);
-                assert!(r.curves.iter().flatten().all(|x| x.is_finite()));
-                for curve in &r.curves {
-                    assert_eq!(curve.len(), r.xs.len());
-                }
-                for k in 0..r.xs.len() {
-                    let sum: f64 = r.curves.iter().map(|c| c[k]).sum();
-                    assert!(
-                        sum.abs() < 1e-12 || (sum - 1.0).abs() < 1e-12,
-                        "{c:?} {sum}"
-                    );
-                }
-                let max = r.axis.x_max();
-                for x in [0.0, 0.5 * max, max] {
-                    let scores = r.scores(x);
-                    assert_eq!(scores.len(), r.ids.len());
-                    assert!(scores.iter().all(|x| x.is_finite()));
+                for options in all_options() {
+                    let r = Ranking::with_options(&g, c, options);
+                    assert_eq!(r.centrality, c);
+                    assert_eq!(r.norm, options.normalization.norm(c));
+                    assert!(r.curves.iter().flatten().all(|x| x.is_finite()));
+                    for curve in &r.curves {
+                        assert_eq!(curve.len(), r.xs.len());
+                    }
+                    for k in 0..r.xs.len() {
+                        let v: Vec<f64> = r.curves.iter().map(|c| c[k]).collect();
+                        assert_normalized(&v, r.norm);
+                    }
+                    let max = r.axis.x_max();
+                    for x in [0.0, 0.5 * max, max] {
+                        let scores = r.scores(x);
+                        assert_eq!(scores.len(), r.ids.len());
+                        assert!(
+                            scores.iter().all(|x| x.is_finite()) || r.unbounded && x == max,
+                            "{c:?} {options:?}"
+                        );
+                        assert_normalized(&r.shares(x), Norm::L1);
+                    }
                 }
             }
         }
@@ -524,6 +788,7 @@ pub(crate) mod tests {
         // eigenvector iterates vanish at k = 1
         let no_arcs = graph(true, 3, &[]);
         for c in [
+            Centrality::InDegree,
             Centrality::Closeness,
             Centrality::Harmonic,
             Centrality::Betweenness,
@@ -553,7 +818,7 @@ pub(crate) mod tests {
         let seeley = Ranking::new(&lecture, Centrality::Seeley);
         assert_eq!(
             (seeley.axis, seeley.xs.len()),
-            (Axis::Iteration, ITERATIONS + 1)
+            (Axis::Iteration(DEFAULT_ITERATIONS), DEFAULT_ITERATIONS + 1)
         );
         let eig = Ranking::new(&path_graph(), Centrality::Eigenvector);
         assert_eq!((eig.xs.len(), eig.vanished), (3, Some(3)));
@@ -571,7 +836,7 @@ pub(crate) mod tests {
         assert_close(&r.scores(1.0), &s.katz_limit(), 1e-15);
         assert_close(
             &r.scores(0.85),
-            &katz(&lecture_graph().successors(), 0.85 / s.rho()),
+            &normalized(katz(&lecture_graph().successors(), 0.85 / s.rho())),
             1e-12,
         );
     }
@@ -580,6 +845,143 @@ pub(crate) mod tests {
     fn test_flat_rankings_are_normalized() {
         let r = Ranking::new(&star_graph(), Centrality::Betweenness);
         assert_close(&r.scores(0.0), &[1.0, 0.0, 0.0, 0.0], 1e-12);
+    }
+
+    /// Returns the ranking of a centrality with traditional normalization.
+    fn traditional(g: &Graph, c: Centrality) -> Ranking {
+        Ranking::with_options(
+            g,
+            c,
+            Options {
+                normalization: Normalization::Traditional,
+                ..Options::default()
+            },
+        )
+    }
+
+    #[test]
+    fn test_traditional_geometric() {
+        // On a → b → c, harmonic centrality is 0, 1, and 1 + 1/2
+        let r = traditional(&path_graph(), Centrality::Harmonic);
+        assert_eq!(r.norm, Norm::None);
+        assert_close(&r.scores(0.0), &[0.0, 1.0, 1.5], 1e-12);
+        assert_close(&r.shares(0.0), &[0.0, 0.4, 0.6], 1e-12);
+        // On the undirected star, each of the three pairs of leaves is
+        // counted once
+        let r = traditional(&star_graph(), Centrality::Betweenness);
+        assert_close(&r.scores(0.0), &[3.0, 0.0, 0.0, 0.0], 1e-12);
+        let directed = graph(true, 3, &[(0, 1), (1, 2), (1, 0), (2, 1)]);
+        let r = traditional(&directed, Centrality::Betweenness);
+        assert_close(&r.scores(0.0), &[0.0, 2.0, 0.0], 1e-12);
+    }
+
+    #[test]
+    fn test_indegree_is_first_iterate() {
+        // On a graph with self-loops, indegree is the first iterate of the
+        // power method for eigenvector centrality
+        let g = graph(true, 3, &[(0, 0), (0, 1), (1, 2), (2, 0), (2, 1)]);
+        let (d, e) = (
+            Ranking::new(&g, Centrality::InDegree),
+            Ranking::new(&g, Centrality::Eigenvector),
+        );
+        assert_eq!(d.axis, Axis::Flat);
+        assert_close(&d.scores(0.0), &e.scores(1.0), 1e-15);
+        assert_close(
+            &traditional(&g, Centrality::InDegree).scores(0.0),
+            &[2.0, 2.0, 1.0],
+            0.0,
+        );
+    }
+
+    #[test]
+    fn test_families() {
+        assert_eq!(Centrality::ALL[0], Centrality::InDegree);
+        for c in Centrality::ALL {
+            let axis = Ranking::new(&lecture_graph(), c).axis;
+            let expected = match axis {
+                Axis::Flat => Family::Geometric,
+                Axis::Iteration(_) => Family::Eigenvector,
+                _ => Family::DampedSum,
+            };
+            assert_eq!(c.family(), expected, "{c:?}");
+        }
+        assert_eq!(Centrality::InDegree.name(true), "Indegree");
+        assert_eq!(Centrality::InDegree.name(false), "Degree");
+        assert_eq!(Centrality::Katz.name(false), "Katz's Index");
+    }
+
+    #[test]
+    fn test_traditional_eigenvector() {
+        let r = traditional(&star_graph(), Centrality::Eigenvector);
+        assert_eq!(r.norm, Norm::L2);
+        // The second iterate is uniform
+        assert_close(&r.scores(2.0), &[0.5; 4], 1e-12);
+        assert_close(&r.shares(2.0), &[0.25; 4], 1e-12);
+    }
+
+    #[test]
+    fn test_traditional_distributions() {
+        for c in [Centrality::Seeley, Centrality::PageRank] {
+            let (r, t) = (
+                Ranking::new(&lecture_graph(), c),
+                traditional(&lecture_graph(), c),
+            );
+            assert_eq!(t.norm, Norm::L1);
+            assert_eq!(r.curves, t.curves);
+        }
+    }
+
+    #[test]
+    fn test_traditional_katz() {
+        let r = traditional(&lecture_graph(), Centrality::Katz);
+        assert_eq!(r.norm, Norm::None);
+        assert!(r.unbounded);
+        // The right end is not sampled
+        assert_eq!(r.xs.len(), SAMPLES);
+        assert_close(&r.scores(0.0), &[1.0; 5], 1e-15);
+        let succ = lecture_graph().successors();
+        let s = Spectrum::new(&succ);
+        assert_close(&r.scores(0.85), &katz(&succ, 0.85 / s.rho()), 1e-12);
+        assert!(r.scores(1.0).iter().all(|x| x.is_infinite()));
+        assert_close(&r.shares(1.0), &s.katz_limit(), 1e-15);
+        // With ρ = 0, the scores are bounded: on a → b → c at β = 1, 1, 2,
+        // and 3
+        let r = traditional(&path_graph(), Centrality::Katz);
+        assert!(!r.unbounded);
+        assert_close(&r.scores(1.0), &[1.0, 2.0, 3.0], 1e-12);
+    }
+
+    #[test]
+    fn test_iterations_option() {
+        let options = Options {
+            iterations: 7,
+            ..Options::default()
+        };
+        let r = Ranking::with_options(&lecture_graph(), Centrality::Seeley, options);
+        assert_eq!((r.axis, r.xs.len()), (Axis::Iteration(7), 8));
+        assert_eq!(r.axis.x_max(), 7.0);
+        // The iterates of a → b → c vanish at k = 3, whatever K ≥ 3
+        let r = Ranking::with_options(&path_graph(), Centrality::Eigenvector, options);
+        assert_eq!((r.xs.len(), r.vanished), (3, Some(3)));
+    }
+
+    #[test]
+    fn test_mean_option() {
+        let options = Options {
+            iterations: MAX_ITERATIONS,
+            mean: true,
+            ..Options::default()
+        };
+        // On the star, the means converge to eigenvector centrality
+        let r = Ranking::with_options(&star_graph(), Centrality::Eigenvector, options);
+        let scores = r.scores(MAX_ITERATIONS as f64);
+        assert!((scores[0] / scores[1] - 3.0_f64.sqrt()).abs() < 1e-2);
+        // With ρ = 0, the curves show the iterates, which vanish
+        let (r, t) = (
+            Ranking::with_options(&path_graph(), Centrality::Eigenvector, options),
+            Ranking::new(&path_graph(), Centrality::Eigenvector),
+        );
+        assert_eq!((r.curves, r.vanished), (t.curves, t.vanished));
     }
 
     /// Run with `cargo test --release -- --ignored`.

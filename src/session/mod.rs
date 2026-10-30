@@ -6,39 +6,51 @@ use anyhow::Context;
 
 use crate::files::{self, Settings};
 use crate::graph::{Graph, NodeId};
-use crate::rank::{Centrality, ITERATIONS, Ranking};
+use crate::rank::{Centrality, MAX_ITERATIONS, Options, Ranking};
 
 /// An editing session: the current graph, its undo/redo history, its
-/// curves for the current centrality, and the curves from before the last
-/// edit.
+/// curves for the current centrality, and the curves to compare them with
+/// (from before the last edit, or of the previous centrality).
 ///
 /// The session is the single source of truth of the application: every
 /// change is a new graph snapshot passed to [`commit`](Self::commit) (or
 /// restored by [`undo`](Self::undo)/[`redo`](Self::redo)), and the ranking is
 /// recomputed once per change, only if the structure of the graph changed.
 ///
-/// The curves from before the last edit (the *ghost*) follow these rules:
-/// when the new graph has a different generation (a new, loaded, or random
-/// graph), there is no ghost; when it has the same generation but a different
-/// structure, the previous ranking becomes the ghost; otherwise (moves and
-/// renames) ranking and ghost are unchanged. The session keeps the graph from
-/// before the last structural edit, so that the ghost can be recomputed when
-/// the centrality changes.
+/// The curves to compare with (the *ghost*) follow the last action. After a
+/// change of graph: when the new graph has a different generation (a new,
+/// loaded, or random graph), there is no ghost; when it has the same
+/// generation but a different structure, the previous ranking, that is, the
+/// current centrality on the graph before the edit, becomes the ghost;
+/// otherwise (moves and renames) ranking and ghost are unchanged. After a
+/// switch of centrality within a [family](crate::rank::Family), whose curves
+/// share the x-axis, the ghost is the previous centrality on the current
+/// graph; after a switch to another family, the ghost is again the new
+/// centrality on the graph before the last structural edit, which the session
+/// keeps for this purpose.
 ///
 /// Each centrality has its own parameter: the iteration *k* for eigenvector
 /// centrality and Seeley's index, the parameter βρ (or β) for Katz's index,
-/// and the damping factor α for PageRank. Switching centrality and
-/// changing parameters are neither undoable nor unsaved changes.
+/// and the damping factor α for PageRank. The [options](Options) of the
+/// rankings (normalization, number of iterations, and means) are shared by
+/// all centralities. Switching centrality and changing parameters or options
+/// are neither undoable nor unsaved changes.
 #[derive(Debug)]
 pub struct Session {
     graph: Graph,
     ranking: Ranking,
     ghost: Option<Ranking>,
-    /// The graph before the last structural edit, if any; the ghost is its
-    /// ranking.
+    /// The graph before the last structural edit, if any; unless
+    /// `compared` is set, the ghost is its ranking.
     before: Option<Graph>,
+    /// The previous centrality, if the last action was a switch of
+    /// centrality within a family: the ghost is its ranking of the current
+    /// graph.
+    compared: Option<Centrality>,
     scores: Vec<f64>,
+    shares: Vec<f64>,
     centrality: Centrality,
+    options: Options,
     iteration: usize,
     katz: f64,
     alpha: f64,
@@ -58,23 +70,28 @@ impl Session {
         Self::with_graph(Graph::new(directed), Settings::default(), None)
     }
 
-    /// Creates a session with the given graph, settings, and file path, an
-    /// empty history, and no unsaved changes.
+    /// Creates a session with the given graph, settings, and file path, the
+    /// [default](Options::default) options, an empty history, and no unsaved
+    /// changes.
     ///
-    /// The iteration starts at [`ITERATIONS`].
+    /// The iteration starts at the number *K* of iterations.
     pub fn with_graph(graph: Graph, settings: Settings, path: impl Into<Option<PathBuf>>) -> Self {
-        let ranking = Ranking::new(&graph, settings.centrality);
+        let options = Options::default();
+        let ranking = Ranking::with_options(&graph, settings.centrality, options);
         let mut session = Self {
             path_generation: graph.generation(),
             graph,
             ranking,
             ghost: None,
             before: None,
+            compared: None,
             scores: Vec::new(),
+            shares: Vec::new(),
             centrality: settings.centrality,
+            options,
             katz: settings.katz.clamp(0.0, 1.0),
             alpha: settings.alpha.clamp(0.0, 1.0),
-            iteration: ITERATIONS,
+            iteration: options.iterations,
             undo: Vec::new(),
             redo: Vec::new(),
             drag_origin: None,
@@ -106,6 +123,13 @@ impl Session {
         &self.scores
     }
 
+    /// Returns the [shares](Ranking::shares) of the current centrality at the
+    /// current parameter, aligned with the identifiers of
+    /// [`ranking`](Self::ranking).
+    pub fn shares(&self) -> &[f64] {
+        &self.shares
+    }
+
     /// Returns the settings to be saved with the graph.
     pub fn settings(&self) -> Settings {
         Settings {
@@ -120,18 +144,46 @@ impl Session {
         self.centrality
     }
 
-    /// Switches to another centrality, recomputing ranking, ghost (from the
-    /// graph before the last edit), and scores.
+    /// Switches to another centrality, recomputing ranking, ghost, and
+    /// scores: the ghost is the previous centrality on the current graph, if
+    /// it belongs to the same [family](crate::rank::Family), and the new
+    /// centrality on the graph before the last edit otherwise.
     ///
     /// This is neither undoable nor an unsaved change.
     pub fn set_centrality(&mut self, c: Centrality) {
         if c == self.centrality {
             return;
         }
-        self.centrality = c;
-        self.ranking = Ranking::new(&self.graph, c);
-        self.ghost = self.before.as_ref().map(|g| Ranking::new(g, c));
-        self.refresh_scores();
+        let previous = std::mem::replace(&mut self.centrality, c);
+        self.compared = (previous.family() == c.family()).then_some(previous);
+        self.rerank();
+    }
+
+    /// Returns the options of the rankings.
+    pub fn options(&self) -> Options {
+        self.options
+    }
+
+    /// Sets the options of the rankings, with the number *K* of iterations
+    /// clamped to [1 . . [`MAX_ITERATIONS`]], recomputing ranking, ghost, and
+    /// scores.
+    ///
+    /// The iteration *k* is clamped to *K*, and if it was at the previous
+    /// *K*, it moves to the new one. This is neither undoable nor an unsaved
+    /// change.
+    pub fn set_options(&mut self, options: Options) {
+        let options = Options {
+            iterations: options.iterations.clamp(1, MAX_ITERATIONS),
+            ..options
+        };
+        if options == self.options {
+            return;
+        }
+        if self.iteration == self.options.iterations || self.iteration > options.iterations {
+            self.iteration = options.iterations;
+        }
+        self.options = options;
+        self.rerank();
     }
 
     /// Returns the current damping factor.
@@ -178,15 +230,16 @@ impl Session {
     /// Sets the parameter of the current centrality.
     ///
     /// α and the Katz parameter are clamped to [0 . . 1]; *k* is rounded and
-    /// clamped to [0 . . [`ITERATIONS`]]. Does nothing for centralities without
-    /// parameter. This is neither undoable nor an unsaved change.
+    /// clamped to [0 . . *K*], where *K* is the number of iterations. Does
+    /// nothing for centralities without parameter. This is neither undoable
+    /// nor an unsaved change.
     pub fn set_param(&mut self, x: f64) {
         let old = self.param();
         match self.centrality {
             Centrality::PageRank => self.alpha = x.clamp(0.0, 1.0),
             Centrality::Katz => self.katz = x.clamp(0.0, 1.0),
             Centrality::Eigenvector | Centrality::Seeley => {
-                self.iteration = x.round().clamp(0.0, ITERATIONS as f64) as usize;
+                self.iteration = x.round().clamp(0.0, self.options.iterations as f64) as usize;
             }
             _ => return,
         }
@@ -324,22 +377,43 @@ impl Session {
         self.dirty = false;
     }
 
-    /// Recomputes the scores from the ranking and the current parameter.
+    /// Recomputes scores and shares from the ranking and the current
+    /// parameter.
     fn refresh_scores(&mut self) {
-        self.scores = self.ranking.scores(self.param().unwrap_or(0.0));
+        let x = self.param().unwrap_or(0.0);
+        self.scores = self.ranking.scores(x);
+        self.shares = self.ranking.shares(x);
+    }
+
+    /// Returns the ranking of a graph for the current centrality and options.
+    fn rank(&self, graph: &Graph) -> Ranking {
+        Ranking::with_options(graph, self.centrality, self.options)
+    }
+
+    /// Recomputes ranking, ghost (see the documentation of [`Session`]), and
+    /// scores.
+    fn rerank(&mut self) {
+        self.ranking = self.rank(&self.graph);
+        self.ghost = match self.compared {
+            Some(c) => Some(Ranking::with_options(&self.graph, c, self.options)),
+            None => self.before.as_ref().map(|g| self.rank(g)),
+        };
+        self.refresh_scores();
     }
 
     /// Makes a graph current, updating ranking and ghost (see the
     /// documentation of [`Session`]).
     fn install(&mut self, new: Graph) {
         if new.generation() != self.graph.generation() {
-            self.ranking = Ranking::new(&new, self.centrality);
+            self.ranking = self.rank(&new);
             self.ghost = None;
             self.before = None;
+            self.compared = None;
         } else if !new.same_structure(&self.graph) {
-            let ranking = Ranking::new(&new, self.centrality);
+            let ranking = self.rank(&new);
             self.ghost = Some(std::mem::replace(&mut self.ranking, ranking));
             self.before = Some(self.graph.clone());
+            self.compared = None;
         }
         self.graph = new;
         self.refresh_scores();
@@ -350,6 +424,7 @@ impl Session {
 mod tests {
     use super::*;
     use crate::graph::{Graph, NodeId};
+    use crate::rank::{DEFAULT_ITERATIONS, Normalization};
 
     fn two_nodes() -> (Session, NodeId, NodeId) {
         let mut s = Session::new(true);
@@ -456,21 +531,63 @@ mod tests {
     fn test_ghost_survives_switch() {
         let (mut s, a, b) = two_nodes();
         s.commit(with_arc(&s, a, b));
-        s.set_centrality(Centrality::Katz);
+        // From PageRank to another family
+        s.set_centrality(Centrality::Harmonic);
         let expected = Ranking::new(
             &{
                 let mut g = s.graph().clone();
                 g.toggle_arc(a, b);
                 g
             },
-            Centrality::Katz,
+            Centrality::Harmonic,
         );
         assert_eq!(
             s.ghost().unwrap().curve(a).unwrap(),
             expected.curve(a).unwrap()
         );
-        assert_eq!(s.ranking().centrality, Centrality::Katz);
+        assert_eq!(s.ranking().centrality, Centrality::Harmonic);
         assert!(!s.can_redo());
+    }
+
+    #[test]
+    fn test_ghost_after_switch_within_family() {
+        let (mut s, a, b) = two_nodes();
+        s.commit(with_arc(&s, a, b));
+        let edited = s.graph().clone();
+        // The previous centrality on the current graph
+        s.set_centrality(Centrality::Katz);
+        let ghost = s.ghost().unwrap();
+        assert_eq!(ghost.centrality, Centrality::PageRank);
+        assert_eq!(
+            ghost.curves,
+            Ranking::new(&edited, Centrality::PageRank).curves
+        );
+        s.set_centrality(Centrality::PageRank);
+        assert_eq!(s.ghost().unwrap().centrality, Centrality::Katz);
+        // Options apply to the ghost, too
+        s.set_centrality(Centrality::InDegree);
+        s.set_centrality(Centrality::Harmonic);
+        let traditional = Options {
+            normalization: Normalization::Traditional,
+            ..s.options()
+        };
+        s.set_options(traditional);
+        assert_eq!(s.ghost().unwrap().curve(b).unwrap(), &[1.0, 1.0]);
+        // A switch to another family brings back the graph before the edit
+        s.set_centrality(Centrality::Seeley);
+        let ghost = s.ghost().unwrap();
+        assert_eq!(ghost.centrality, Centrality::Seeley);
+        assert_eq!(ghost.curve(b).unwrap()[1], 0.5);
+        // An edit, too
+        s.set_centrality(Centrality::Eigenvector);
+        assert_eq!(s.ghost().unwrap().centrality, Centrality::Seeley);
+        s.commit(with_arc(&s, b, a));
+        let ghost = s.ghost().unwrap();
+        assert_eq!(ghost.centrality, Centrality::Eigenvector);
+        assert_eq!(
+            ghost.curves,
+            Ranking::with_options(&edited, Centrality::Eigenvector, traditional).curves
+        );
     }
 
     #[test]
@@ -491,7 +608,7 @@ mod tests {
         };
         s.commit(arc.clone());
         check(&s, &no_arc);
-        s.set_centrality(Centrality::Katz);
+        s.set_centrality(Centrality::Harmonic);
         check(&s, &no_arc);
         assert!(s.undo());
         check(&s, &arc);
@@ -530,11 +647,11 @@ mod tests {
         s.step_param(-5);
         assert!((s.katz() - 0.8).abs() < 1e-12);
         s.set_centrality(Centrality::Eigenvector);
-        assert_eq!(s.param(), Some(ITERATIONS as f64));
+        assert_eq!(s.param(), Some(DEFAULT_ITERATIONS as f64));
         s.step_param(-1);
-        assert_eq!(s.iteration(), ITERATIONS - 1);
+        assert_eq!(s.iteration(), DEFAULT_ITERATIONS - 1);
         s.set_param(1e9);
-        assert_eq!(s.iteration(), ITERATIONS);
+        assert_eq!(s.iteration(), DEFAULT_ITERATIONS);
         s.set_centrality(Centrality::Closeness);
         assert_eq!(s.param(), None);
         s.step_param(3); // no effect
@@ -567,7 +684,7 @@ mod tests {
         t.save_as(&path)?;
         let u = Session::open(&path)?;
         assert_eq!(u.centrality(), Centrality::Seeley);
-        assert_eq!(u.iteration(), ITERATIONS);
+        assert_eq!(u.iteration(), DEFAULT_ITERATIONS);
         Ok(())
     }
 
@@ -605,5 +722,53 @@ mod tests {
         assert!(!s.is_dirty());
         s.set_alpha(0.5);
         assert!(!s.is_dirty());
+    }
+
+    #[test]
+    fn test_options_rerank() {
+        let (mut s, a, b) = two_nodes();
+        s.commit(with_arc(&s, a, b));
+        s.set_centrality(Centrality::Harmonic);
+        let traditional = Options {
+            normalization: Normalization::Traditional,
+            ..s.options()
+        };
+        s.set_options(traditional);
+        // Ranking and ghost are recomputed, with raw scores
+        assert_eq!(s.ranking().curve(b).unwrap(), &[1.0, 1.0]);
+        assert_eq!(s.ghost().unwrap().curve(b).unwrap(), &[0.0, 0.0]);
+        assert_eq!(s.scores(), &[0.0, 1.0]);
+        assert_eq!(s.shares(), &[0.0, 1.0]);
+        // Options survive a switch of centrality: Katz's index of a → b at
+        // β = 0.85, as ρ = 0
+        s.set_centrality(Centrality::Katz);
+        assert_eq!(s.options(), traditional);
+        assert_eq!(s.scores(), &[1.0, 1.85]);
+    }
+
+    #[test]
+    fn test_iterations_follow_k() {
+        let (mut s, _, _) = two_nodes();
+        s.set_centrality(Centrality::Seeley);
+        let with = |s: &Session, iterations| Options {
+            iterations,
+            ..s.options()
+        };
+        // At K, k follows K
+        s.set_options(with(&s, 80));
+        assert_eq!((s.iteration(), s.ranking().xs.len()), (80, 81));
+        // Elsewhere, k stays, unless beyond K
+        s.set_param(30.0);
+        s.set_options(with(&s, 60));
+        assert_eq!(s.iteration(), 30);
+        s.set_options(with(&s, 20));
+        assert_eq!(s.iteration(), 20);
+        s.set_param(1e9);
+        assert_eq!(s.iteration(), 20);
+        // K is clamped
+        s.set_options(with(&s, 0));
+        assert_eq!(s.options().iterations, 1);
+        s.set_options(with(&s, usize::MAX));
+        assert_eq!(s.options().iterations, MAX_ITERATIONS);
     }
 }

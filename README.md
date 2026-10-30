@@ -2,14 +2,22 @@
 
 A teaching aid to build intuition about centrality measures. The instructor
 edits a small graph at a projector, and the class watches, in real time, how
-the score of each node changes. There are seven centralities, in three
+the score of each node changes. There are eight centralities, in three
 families:
 
 | Family | Centralities | x-axis of the plot |
 |---|---|---|
-| Geometric | [Closeness](https://en.wikipedia.org/wiki/Closeness_centrality), [harmonic centrality](https://en.wikipedia.org/wiki/Closeness_centrality#In_disconnected_graphs), [betweenness](https://en.wikipedia.org/wiki/Betweenness_centrality) | None: the curves are horizontal lines |
-| Spectral (eigenvector) | [Eigenvector (Landau) centrality](https://en.wikipedia.org/wiki/Eigenvector_centrality), Seeley's index | The iteration *k* = 0, 1, …, 50 of the power method |
+| Geometric | [Indegree](https://en.wikipedia.org/wiki/Centrality#Degree_centrality) (degree, on undirected graphs), [closeness](https://en.wikipedia.org/wiki/Closeness_centrality), [harmonic centrality](https://en.wikipedia.org/wiki/Closeness_centrality#In_disconnected_graphs), [betweenness](https://en.wikipedia.org/wiki/Betweenness_centrality) | None: the curves are horizontal lines |
+| Spectral (eigenvector) | [Eigenvector (Landau) centrality](https://en.wikipedia.org/wiki/Eigenvector_centrality), Seeley's index | The iteration *k* = 0, 1, …, *K* of the power method (*K* = 50 by default) |
 | Spectral (damped sum) | [Katz's index](https://en.wikipedia.org/wiki/Katz_centrality), [PageRank](https://en.wikipedia.org/wiki/PageRank) | βρ ∈ [0 . . 1] for Katz's index, α ∈ [0 . . 1] for PageRank |
+
+By default, every score vector is normalized in ℓ<sub>1</sub>, that is, divided by
+the sum of its entries, so that it shows the share of each node, and scores are
+comparable across centralities. Unchecking View → ℓ₁ normalization switches each
+centrality to its traditional normalization: none for the geometric centralities
+and Katz's index, ℓ<sub>2</sub> for eigenvector centrality, and ℓ<sub>1</sub>
+for Seeley's index and PageRank, which are distributions. The label of the
+y-axis always states the normalization in effect.
 
 The two spectral families are related. Eigenvector centrality and Seeley's index
 are dominant eigenvectors, of the adjacency matrix and of the adjacency matrix
@@ -19,7 +27,8 @@ the dominant eigenvectors as the damping factor tends to its limit: Katz's index
 tends, as βρ → 1, to eigenvector centrality, and PageRank tends, as α → 1, to
 Seeley's index. The plots of the eigenvectors show the iterates of the power
 method: on periodic structures the iterates can zigzag forever, even though the
-eigenvector exists. For details, see
+eigenvector exists. Their Cesàro means, however, converge to the eigenvector
+(check Cesàro means, next to the slider). For details, see
 “[*Spectral Ranking*](https://arxiv.org/abs/0912.0238)”.
 
 ## Building and Running
@@ -38,11 +47,12 @@ so build it on the machine that runs it.
   underneath.
 - Each node has its own color, shared by its curve; a node keeps its color
   for as long as it exists, whatever the centrality.
-- The size of a node shows its score at the current value of the parameter:
-  its area is proportional to the score, within a minimum and a maximum
-  size, and a node with score 1/*n*, where *n* is the number of nodes, has
-  the standard size.
-- A node whose score is exactly zero has a thicker gray outline: for
+- The size of a node shows its share at the current value of the parameter,
+  that is, its score normalized in ℓ<sub>1</sub>, whatever the normalization of
+  the plot: its area is proportional to the share, within a minimum and a
+  maximum size, and a node with share 1/*n*, where *n* is the number of nodes,
+  has the standard size.
+- A node whose share is exactly zero has a thicker gray outline: for
   example, every node once the iterates of eigenvector centrality vanish, or
   the nodes outside the sinks in the limit of PageRank at α = 1. A score that
   is merely small, such as that of the same nodes at α = 0.99, is not zero,
@@ -54,16 +64,26 @@ so build it on the machine that runs it.
   before the edit remain visible as faded dashed lines, until the next such
   edit (there are none after opening a file or creating a new or random
   graph). They show the current centrality on the graph from before the
-  edit, so they survive a switch of centrality: make an edit, then switch
-  among the centralities to compare the effect of the same edit on each.
+  edit, so they survive a switch of centrality to another family: make an
+  edit, then switch among the families to compare the effect of the same edit
+  on each.
+- A switch between two centralities of the same family, which share the
+  x-axis (for example, between Katz's index and PageRank), shows instead the
+  previous centrality, on the current graph, as faded dashed lines, and a note
+  at the top left of the plot (“Dashed: …”) names it. The last action wins:
+  the next edit brings back the curves from before the edit, and the next
+  switch the curves it calls for.
 - The y-axis adapts to the largest score; View → Fixed y-axis [0..1] keeps
-  it at [0 . . 1].
+  it at [0 . . 1]. Its label names the centrality and the normalization in
+  effect: “ℓ₁-normalized”, “ℓ₂-normalized”, or “not normalized”.
 
-Hovering a node highlights it and its curve, and shows the node's score;
-hovering a curve highlights it and its node.
+Hovering a node highlights it and its curve, and shows the node's score, in the
+normalization of the plot; hovering a curve highlights it and its node.
 
-### Geometric: Closeness, Harmonic Centrality, and Betweenness
+### Geometric: Indegree, Closeness, Harmonic Centrality, and Betweenness
 
+- Indegree is called degree, in the menu and over the plot, on undirected
+  graphs.
 - The scores have no parameter: each curve is a horizontal line at the
   score of its node, and there is no slider, no vertical line, and no tick
   on the x-axis. End labels, hovering, and the curves from before the last
@@ -74,17 +94,27 @@ hovering a curve highlights it and its node.
 
 - The scores are dominant eigenvectors, and the plot shows how the power method,
   from the uniform vector, computes them: the x-axis is the iteration *k* = 0,
-  1, …, 50, and the curves join the iterates with straight segments, so an
-  oscillation shows up as a zigzag. The power method is just one way of
-  computing the eigenvectors: oscillating or vanishing iterates are a property
-  of the method, not of the centrality.
-- The slider takes integer values, starts at 50, and is shared by the two
-  centralities; node sizes show the iterate at its *k*.
+  1, …, *K* (“k (iterations of the power method)”), and the curves join the
+  iterates with straight segments, so an oscillation shows up as a zigzag. The
+  power method is just one way of computing the eigenvectors: oscillating or
+  vanishing iterates are a property of the method, not of the centrality.
+- The number *K* of iterations is 50 by default, and can be set from 1 to 1000
+  in the field “K = …” next to the slider (drag it, or click it and type).
+- Checking Cesàro means, next to the slider, shows instead, at each *k*, the
+  mean of the first *k* + 1 iterates (for eigenvector centrality, of the
+  iterates scaled by ρ<sup>*k*</sup> rather than normalized), which converges to
+  the centrality even when the iterates zigzag (see The Mathematics below); the
+  convergence is slow, like 1/*k*, so it is worth raising *K*. If the graph has no cycles, eigenvector centrality has no
+  means, and the plot shows the iterates whether the box is checked or not.
+- The slider takes integer values, starts at *K*, and is shared by the two
+  centralities, as are *K* and Cesàro means; node sizes show the iterate
+  (or the mean) at its *k*. If the slider is at *K* when *K* changes, it moves to
+  the new *K*.
 - Eigenvector centrality shows the same hulls as Katz's index, and Seeley's
   index shows the same hulls and dashed outlines as PageRank (see below).
 - If the iterates of eigenvector centrality vanish within the plotted
   iterations, as they do on every graph without cycles (self-loops included)
-  whose longest path has fewer than 50 arcs, the curves stop at the last nonzero
+  whose longest path has fewer than *K* arcs, the curves stop at the last nonzero
   iterate, a note on the plot (“1·*A*<sup>*k*</sup> = 0 for *k* ≥ …”) says from
   which iteration on, and from that iteration on all nodes have the minimum
   size.
@@ -99,6 +129,13 @@ hovering a curve highlights it and its node.
 - The right end of the curves is the exact limit as βρ → 1, if ρ > 0, or as
   α → 1: eigenvector centrality for Katz's index, and Seeley's index for
   PageRank.
+- With traditional normalization, Katz's index is not normalized, and, if ρ > 0,
+  it diverges as βρ → 1. Then, the curves stop just before βρ = 1, the y-axis
+  follows the largest score at the current βρ (dragging the slider towards 1
+  shows the blow-up), curves above the plot are cut, and their labels are
+  gathered at its top. At βρ = 1, the nodes reached by a dominant class have
+  infinite score (“∞” when hovered), and node sizes show the shares in the
+  limit, that is, eigenvector centrality.
 - For Katz's index, if ρ > 0, shaded hulls labeled “dominant” mark the
   dominant classes: strongly connected components whose spectral radius is
   ρ, which determine the limit as βρ → 1. There are no dashed outlines,
@@ -119,7 +156,17 @@ the Centrality menu (geometric, spectral by eigenvector, spectral by damped
 sum): a triangle *a* → *b* → *c* → *a*, with arcs *c* → *d* and *d* → *e*, right
 after the edit that adds *e* → *d* and closes *d* and *e* into a 2-cycle. The
 faded dashed curves show the graph before that edit, when *e* was dangling. The
-parameters are at their defaults: α = βρ = 0.85, and *k* = 50.
+parameters and options are at their defaults: α = βρ = 0.85, *k* = *K* = 50,
+plain iterates (not their means), and normalization in ℓ<sub>1</sub>.
+
+### Indegree
+
+![Indegree](screenshots/indegree.png)
+
+Indegree counts the arcs entering each node. The edit gives *d* a second one,
+from *e*, so *d* gets ⅓, and every other node ⅙; before the edit, every node
+had exactly one incoming arc, so the dashed curves coincide at 0.2. Indegree is
+**1** *A*, so these are also the scores of eigenvector centrality at *k* = 1.
 
 ### Closeness
 
@@ -247,15 +294,20 @@ Cmd is Ctrl on Linux and Windows, and Alt is Option on macOS.
 | Undo, Redo | Cmd-Z, Cmd-Shift-Z |
 | Random graph | Cmd-R |
 | Force-directed, circle, components layout | Cmd-1, Cmd-2, Cmd-3 |
-| Closeness, harmonic centrality, betweenness | Cmd-Alt-1, Cmd-Alt-2, Cmd-Alt-3 |
-| Eigenvector centrality, Seeley's index | Cmd-Alt-4, Cmd-Alt-5 |
-| Katz's index, PageRank | Cmd-Alt-6, Cmd-Alt-7 |
+| Indegree, closeness, harmonic centrality, betweenness | Cmd-Alt-1, Cmd-Alt-2, Cmd-Alt-3, Cmd-Alt-4 |
+| Eigenvector centrality, Seeley's index | Cmd-Alt-5, Cmd-Alt-6 |
+| Katz's index, PageRank | Cmd-Alt-7, Cmd-Alt-8 |
 | Zoom in, out, reset | Cmd-+, Cmd-−, Cmd-0 |
 | Full screen | Cmd-Shift-F |
 | Change βρ, β, or α by 0.01 (0.05) | ← and → (with Shift) |
 | Change *k* by 1 (5) | ← and → (with Shift) |
 
 The centralities are also in the Centrality menu, grouped by family.
+
+The Graph menu also rotates the graph by 90° clockwise, and flips it
+horizontally or vertically, about the center of its bounding box; if the
+rotated graph does not fit the canvas, it is moved, or, if needed, shrunk, to
+fit. Like the layouts, these are animated, and they are one undo step each.
 
 Undo and redo cover every change to the graph, so flipping between them is a
 quick way to show the same graph before and after an edit. Switching
@@ -271,7 +323,8 @@ missing structure by hand.
 
 Graphs are saved as JSON, together with the current centrality, the parameter of
 Katz's index, and α; opening a file restores them. The iteration *k* is not
-saved, and starts at 50.
+saved, and starts at *K*. The normalization, *K*, and Cesàro means are
+presentation options, not saved either: opening a file keeps them as they are.
 
 ## The Mathematics
 
@@ -290,12 +343,25 @@ distances *d*(*y*, *x*) from the other nodes *y* to *x*. Betweenness counts
 the shortest paths passing through a node, and does not change if all arcs
 are reversed.
 
-Every score vector shown, in the plot and in node sizes, is normalized to
-sum to 1, so it shows the share of each node in the total score. The only
-exception is a vector that is identically zero, which is shown as zero: all
-curves at 0, and all nodes at the minimum size.
+By default, every score vector shown, in the plot and in node sizes, is
+normalized in ℓ<sub>1</sub>, that is, to sum to 1, so it shows the share of
+each node in the total score. With View → ℓ₁ normalization unchecked, the plot
+shows instead the geometric centralities and Katz's index not normalized, as
+defined below, and eigenvector centrality normalized in ℓ<sub>2</sub>, so that
+the sum of the squares of the scores is 1; Seeley's index and PageRank, which
+are distributions, are normalized in ℓ<sub>1</sub> either way, and node sizes
+always show shares, normalized in ℓ<sub>1</sub>. Normalization is a matter of
+presentation: it does not change the ratio between the scores of two nodes. The
+only exception is a vector that is identically zero, which is shown as zero:
+all curves at 0, and all nodes at the minimum size.
 
-### Geometric: Closeness, Harmonic Centrality, and Betweenness
+### Geometric: Indegree, Closeness, Harmonic Centrality, and Betweenness
+
+The indegree of *x* is the number of arcs entering *x*, a self-loop included,
+that is, (**1** *A*)<sub>*x*</sub>: on undirected graphs, it is the degree.
+Without self-loops, it is the number of nodes at distance one from which *x* is
+reached, hence a geometric centrality; with them, it is still **1** *A*, the
+first iterate of the power method for eigenvector centrality.
 
 For closeness and harmonic centrality, the
 distance *d*(*y*, *x*) (the length of a shortest path from *y* to *x*, or ∞
@@ -311,10 +377,13 @@ centralities, a node is central if it is reached.
   the ordered pairs of distinct nodes *y*, *z* different from *x* such that
   σ<sub>*yz*</sub> > 0, where σ<sub>*yz*</sub> is the number of shortest
   paths from *y* to *z* and σ<sub>*yz*</sub>(*x*) is the number of those
-  passing through *x*. In undirected graphs every path is counted twice,
-  once in each direction, which normalization removes.
+  passing through *x*. In undirected graphs every path is counted twice, once
+  in each direction, so with traditional normalization the sum is halved, as
+  the traditional definition sums over unordered pairs; normalization in
+  ℓ<sub>1</sub> removes the factor anyway.
 
-Self-loops affect none of the three. The scores are computed exactly, by a
+Self-loops affect none of closeness, harmonic centrality, and betweenness. The
+scores are computed exactly, by a
 breadth-first visit from every node (for betweenness, with Brandes's
 algorithm).
 
@@ -335,8 +404,8 @@ are contingent, and when they do not converge the eigenvector still exists.
 
 Eigenvector centrality is a dominant left eigenvector of *A*, that is, a
 nonnegative nonzero solution of **x** *A* = ρ **x**. The plot shows the
-iterates **x**₀, **x**₁, …, **x**₅₀ of the power method from the vector of
-ones, normalized:
+iterates **x**₀, **x**₁, …, **x**<sub>*K*</sub> of the power method from the
+vector of ones, normalized:
 
 **x**₀ = (1/*n*, …, 1/*n*),
 **x**<sub>*k* + 1</sub> = **x**<sub>*k*</sub> *A* / ‖**x**<sub>*k*</sub> *A*‖₁.
@@ -344,9 +413,10 @@ ones, normalized:
 The iterate **x**<sub>*k*</sub> is **1** *A*<sup>*k*</sup> normalized: the
 number of walks of length *k* ending at each node, as a fraction of all walks of
 length *k*. When the iterates converge, their limit is eigenvector centrality,
-the same as the limit of Katz's index as βρ → 1. But the iterates may also
-vanish, oscillate, or converge slowly, which are properties of the power method,
-not of eigenvector centrality:
+the same as the limit of Katz's index as βρ → 1. (With traditional
+normalization, the plot shows **1** *A*<sup>*k*</sup> normalized in
+ℓ<sub>2</sub>.) But the iterates may also vanish, oscillate, or converge slowly,
+which are properties of the power method, not of eigenvector centrality:
 
 - If the graph has no cycles (self-loops included), that is, if ρ = 0, the
   iterates vanish: if the longest path has length *L* (necessarily less than
@@ -354,10 +424,10 @@ not of eigenvector centrality:
   nonnegative, so there is no cancellation, and vanishing is detected exactly.
   The last nonzero iterate is nonetheless an eigenvector, with eigenvalue 0 = ρ,
   since **1** *A*<sup>*L*</sup> *A* = 0: the power method stops only because it
-  cannot normalize the next iterate. If *L* < 50, the curves stop at
+  cannot normalize the next iterate. If *L* < *K*, the curves stop at
   **x**<sub>*L*</sub>, and the note on the plot reads “1·*A*<sup>*k*</sup> = 0
   for *k* ≥ *L* + 1”, with the value of *L* + 1; otherwise, the curves run to
-  *k* = 50, with no note.
+  *k* = *K*, with no note.
 - On periodic structures the iterates can oscillate forever, although the
   eigenvector exists: on an undirected star they alternate between the uniform
   vector and the vector with ½ on the center and the other half split evenly
@@ -368,12 +438,34 @@ not of eigenvector centrality:
   with a self-loop on both nodes, **1** *A*<sup>*k*</sup> = (1, *k* + 1), so at
   *k* = 50 node *a* still has score 1/52, although its limit is zero.
 
+With Cesàro means checked, if ρ > 0, the plot shows instead, at each *k*,
+the normalized mean of the first *k* + 1 iterates of the power method on
+*A*/ρ:
+
+**m**<sub>*k*</sub> = (**y**₀ + **y**₁ + ⋯ + **y**<sub>*k*</sub>) / (*k* + 1),
+where **y**<sub>*t*</sub> = **1** *A*<sup>*t*</sup> / ρ<sup>*t*</sup>.
+
+These means always converge, after normalization, to eigenvector centrality,
+the limit of Katz's index as βρ → 1, even when the iterates oscillate: the
+latter limit is the Abel mean of the **y**<sub>*t*</sub>, which equals their
+Cesàro mean, **m**<sub>*k*</sub> as *k* → ∞, whenever the latter exists. The
+error decreases like 1/*k*. When ν > 1 the means diverge, like
+*k*<sup>ν − 1</sup>, but their normalizations still converge.
+
+The iterates are scaled by ρ<sup>*t*</sup>, rather than normalized, because the
+means of the normalized iterates **x**<sub>*t*</sub> may converge to a vector
+that is not an eigenvector: on an undirected star with three leaves the
+**x**<sub>*t*</sub> alternate between the uniform vector and (½, ⅙, ⅙, ⅙), so
+their means tend to ⅜ on the center, whereas eigenvector centrality gives it
+1/(1 + √3) ≈ 0.366. If ρ = 0 there is no scaling, and the plot shows the
+iterates.
+
 #### Seeley's Index
 
 Seeley's index is a stationary distribution of the random walk, that is, a
 solution of **x** = **x** *P* that is a distribution; it may not be unique. The
-plot shows the iterates **x**₀, **x**₁, …, **x**₅₀ of the power method from the
-uniform distribution:
+plot shows the iterates **x**₀, **x**₁, …, **x**<sub>*K*</sub> of the power method
+from the uniform distribution:
 
 **x**₀ = (1/*n*, …, 1/*n*), **x**<sub>*k* + 1</sub> = **x**<sub>*k*</sub> *P*.
 
@@ -384,6 +476,12 @@ converge, their limit is Seeley's index, the same as the limit of PageRank as
 index exists: on *a* ⇄ *b*, *c* → *a* they alternate, from *k* = 1 on, between
 (⅔, ⅓, 0) and (⅓, ⅔, 0), whereas Seeley's index, and the limit of PageRank, is
 (½, ½, 0), the long-run average of the iterates.
+
+With Cesàro means checked, the plot shows at each *k* the mean
+(**x**₀ + **x**₁ + ⋯ + **x**<sub>*k*</sub>) / (*k* + 1) of the first *k* + 1
+iterates, which, by the mean ergodic theorem, always converges to Seeley's
+index, like 1/*k*. Here no scaling is needed, as *P* is stochastic: its spectral
+radius is 1, and every iterate sums to 1.
 
 ### Spectral (Damped Sum)
 
@@ -400,9 +498,10 @@ may repeat nodes and arcs), weighting a walk of length *t* by β<sup>*t*</sup>:
 **k**(β) = **1** Σ<sub>*t* ≥ 0</sub> β<sup>*t*</sup> *A*<sup>*t*</sup> = **1**
 (*I* − β *A*)⁻¹, for 0 ≤ β < 1/ρ.
 
-It is shown normalized, as **κ**(β) = **k**(β) / ‖**k**(β)‖₁. The term *t* = 0
-(the walk of length zero from each node to itself) is included, so **κ**(0) is
-uniform, like PageRank at α = 0. The curves are computed exactly, by solving
+It is shown normalized, as **κ**(β) = **k**(β) / ‖**k**(β)‖₁, or, with
+traditional normalization, as **k**(β) itself. The term *t* = 0 (the walk of
+length zero from each node to itself) is included, so **k**(0) = **1**, and
+**κ**(0) is uniform, like PageRank at α = 0. The curves are computed exactly, by solving
 (*I* − β *A*<sup>*T*</sup>) **k**<sup>*T*</sup> = **1**<sup>*T*</sup> at each
 plotted β, except at the right end when ρ > 0 (see below).
 
@@ -427,6 +526,11 @@ number of dominant classes on a path of the condensation, the acyclic graph of
 the strongly connected components. Then (1 − βρ)<sup>ν</sup> **k**(β) tends to
 a nonzero nonnegative vector, and **κ**(β) tends to its normalization, which
 is eigenvector centrality, that is, a dominant left eigenvector of *A*.
+Instead, **k**(β) itself diverges on the nodes reached by a dominant class
+(the classes included), and converges elsewhere: with traditional
+normalization, the value at βρ = 1 is ∞ on the former, and the exact limit,
+**1**<sub>*U*</sub> (*I* − *A*<sub>*UU*</sub>/ρ)⁻¹, on the set *U* of the
+other nodes.
 
 The limit is supported exactly on the dominant classes that end a chain of ν
 dominant classes, and on the nodes they reach. In particular, when dominant

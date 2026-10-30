@@ -1,5 +1,48 @@
 # Change Log
 
+## [Unreleased]
+
+### New
+
+- View → ℓ1 normalization, checked by default, normalizes all centralities in
+  ℓ1; unchecking it switches to the traditional normalization of each: none
+  for the geometric centralities and Katz's index, ℓ2 for eigenvector
+  centrality, and ℓ1 for Seeley's index and PageRank. The label of the y-axis
+  states the normalization in effect, and node sizes always show ℓ1 shares.
+
+- Without normalization, Katz's index diverges as βρ → 1: the y-axis then
+  follows the scores at the current βρ, and the scores at βρ = 1 are infinite
+  on the nodes reached by a dominant class.
+
+- For eigenvector centrality and Seeley's index, Cesàro means, next to the
+  slider, shows the means of the iterates of the power method (on A/ρ for
+  eigenvector centrality), which converge to the centrality even when the
+  iterates oscillate.
+
+- The number K of iterations of the power method can be set from 1 to 1000
+  (50 by default).
+
+- Indegree (degree, on undirected graphs), the first centrality of the
+  geometric family; self-loops count, so that it is 1A, the first iterate of
+  the power method for eigenvector centrality.
+
+- Graph → Rotate 90° Clockwise, Flip Horizontally, and Flip Vertically, about
+  the center of the graph, animated and undoable.
+
+- A switch between two centralities of the same family shows the previous
+  centrality, on the current graph, as dashed curves, named by a note on the
+  plot, until the next edit or switch.
+
+### Changed
+
+- The shortcuts of the centralities are Cmd-Alt-1 to Cmd-Alt-8, as indegree
+  comes first.
+
+- The x-axis of eigenvector centrality and Seeley's index is labeled “k
+  (iterations of the power method)”.
+
+- `rank::katz` returns Katz's index not normalized.
+
 ## [0.2.0] - 2026-10-29
 
 ### New

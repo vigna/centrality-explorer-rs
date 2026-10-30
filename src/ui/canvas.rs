@@ -196,18 +196,20 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
     }
 
     let n = graph.len();
-    let scores: HashMap<NodeId, f64> = app
+    // Sizes and outlines show shares, which are comparable across
+    // normalizations, and finite.
+    let shares: HashMap<NodeId, f64> = app
         .session
         .ranking()
         .ids
         .iter()
         .copied()
-        .zip(app.session.scores().iter().copied())
+        .zip(app.session.shares().iter().copied())
         .collect();
     let radii: Vec<f32> = graph
         .nodes()
         .iter()
-        .map(|node| node_radius(scores.get(&node.id).copied().unwrap_or(0.0), n))
+        .map(|node| node_radius(shares.get(&node.id).copied().unwrap_or(0.0), n))
         .collect();
     let arcs = drawn_arcs(app, &positions, &radii);
     let ids: Vec<NodeId> = graph.nodes().iter().map(|node| node.id).collect();
@@ -387,7 +389,7 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
         painter.circle_filled(p, r, fill);
         // The node may be hovered on the canvas or through its curve.
         let outline = outline(
-            scores.get(&node.id).copied().unwrap_or(0.0),
+            shares.get(&node.id).copied().unwrap_or(0.0),
             app.hovered == Some(node.id),
         );
         if app.session.ranking().dangling.contains(&node.id) {
@@ -497,7 +499,11 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
                     }
                 });
                 ui.menu_button("Centrality", |ui| {
-                    if let Some(c) = centrality_menu(ui, app.session.centrality()) {
+                    if let Some(c) = centrality_menu(
+                        ui,
+                        app.session.centrality(),
+                        app.session.graph().is_directed(),
+                    ) {
                         command = Some(Command::Centrality(c));
                         ui.close();
                     }
@@ -534,7 +540,12 @@ pub(crate) fn canvas(app: &mut App, ui: &mut egui::Ui) {
             .iter()
             .position(|&x| x == id)
             .map_or(0.0, |i| app.session.scores()[i]);
-        response.on_hover_text_at_pointer(format!("{}: {score:.4}", node.label));
+        let score = if score.is_infinite() {
+            "∞".to_owned()
+        } else {
+            format!("{score:.4}")
+        };
+        response.on_hover_text_at_pointer(format!("{}: {score}", node.label));
     }
 }
 

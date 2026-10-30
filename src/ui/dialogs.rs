@@ -114,7 +114,9 @@ impl App {
             return;
         };
         match Session::open(&path) {
-            Ok(session) => {
+            Ok(mut session) => {
+                // The options are a matter of presentation, not of the file.
+                session.set_options(self.session.options());
                 self.session = session;
                 self.animation = None;
                 self.dragging = None;

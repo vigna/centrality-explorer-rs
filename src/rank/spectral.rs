@@ -17,11 +17,11 @@ const PERRON_TOLERANCE: f64 = 1E-13;
 /// The maximum number of steps of the power iteration.
 const PERRON_ITERATIONS: usize = 1_000_000;
 
-/// Returns Katz's index of a graph given by successor lists, normalized.
+/// Returns Katz's index of a graph given by successor lists, not normalized.
 ///
-/// This is **κ**(β) = **k**(β) / ‖**k**(β)‖₁, where **k**(β) = **1**
-/// Σ<sub>*t* ≥ 0</sub> β<sup>*t*</sup> *A*<sup>*t*</sup> = **1** (*I* −
-/// β*A*)⁻¹. In particular, **κ**(0) is uniform.
+/// This is **k**(β) = **1** Σ<sub>*t* ≥ 0</sub> β<sup>*t*</sup>
+/// *A*<sup>*t*</sup> = **1** (*I* − β*A*)⁻¹, whose normalization in ℓ1 is
+/// **κ**(β) = **k**(β) / ‖**k**(β)‖₁. In particular, **k**(0) = **1**.
 ///
 /// The series converges, and the result is meaningful, only for 0 ≤ β <
 /// 1/ρ, where ρ is the [spectral radius](Spectrum::rho) of *A*; when ρ = 0,
@@ -44,10 +44,6 @@ pub fn katz(succ: &[Vec<usize>], beta: f64) -> Vec<f64> {
     }
     let mut k = vec![1.0; n];
     lu::solve(&mut a, &mut k);
-    let sum: f64 = k.iter().sum();
-    for x in &mut k {
-        *x /= sum;
-    }
     k
 }
 
@@ -360,11 +356,69 @@ impl Spectrum {
         }
         coeff
     }
+
+    /// Returns the limit of [Katz's index](katz), not normalized, as β →
+    /// 1/ρ: **k**(β) diverges on the nodes reachable from a basic class (the
+    /// classes themselves included), and converges elsewhere.
+    ///
+    /// This method must be called only when ρ > 0.
+    ///
+    /// # Implementation Notes
+    ///
+    /// The set *U* of nodes not reachable from a basic class is closed under
+    /// predecessors, so the restriction of **k**(β) to *U* is **1**<sub>*U*</sub>
+    /// (*I* − β*A*<sub>*UU*</sub>)⁻¹; the spectral radius of
+    /// *A*<sub>*UU*</sub> is less than ρ, so the restriction is finite at β =
+    /// 1/ρ, where it is computed by solving a dense system. On the other
+    /// nodes, by monotone convergence, the limit is Σ<sub>*t* ≥ 0</sub>
+    /// ρ<sup>−*t*</sup> (**1** *A*<sup>*t*</sup>)<sub>*v*</sub>, which
+    /// diverges, as walks through a basic class make infinitely many of its
+    /// terms bounded away from zero.
+    pub fn katz_unnormalized_limit(&self) -> Vec<f64> {
+        debug_assert!(self.rho > 0.0, "the Katz limit requires ρ > 0");
+        let n = self.succ.len();
+        // Whether each class is reachable from a basic class, in topological
+        // order, so that the classes with an arc into a class come first.
+        let mut reached = vec![false; self.classes.len()];
+        for (c, class) in self.classes.iter().enumerate() {
+            if class.perron.is_some() {
+                reached[c] = true;
+            }
+            if reached[c] {
+                for &v in &class.nodes {
+                    for &w in &self.succ[v] {
+                        reached[self.class_of[w]] = true;
+                    }
+                }
+            }
+        }
+        let unreached: Vec<usize> = (0..n).filter(|&v| !reached[self.class_of[v]]).collect();
+        let mut local = vec![usize::MAX; n];
+        for (i, &v) in unreached.iter().enumerate() {
+            local[v] = i;
+        }
+        let succ: Vec<Vec<usize>> = unreached
+            .iter()
+            .map(|&v| {
+                self.succ[v]
+                    .iter()
+                    .filter(|&&w| local[w] != usize::MAX)
+                    .map(|&w| local[w])
+                    .collect()
+            })
+            .collect();
+        let mut limit = vec![f64::INFINITY; n];
+        for (&v, x) in unreached.iter().zip(katz(&succ, 1.0 / self.rho)) {
+            limit[v] = x;
+        }
+        limit
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rank::normalized;
     use crate::rank::tests::assert_close;
 
     /// Returns the successor lists of a graph with `n` nodes and the given
@@ -453,17 +507,39 @@ mod tests {
     }
 
     #[test]
-    fn test_katz_zero_is_uniform() {
-        assert_close(&katz(&golden(), 0.0), &[0.5, 0.5], 1e-15);
+    fn test_katz_zero_is_ones() {
+        assert_close(&katz(&golden(), 0.0), &[1.0, 1.0], 1e-15);
     }
 
     #[test]
     fn test_katz_dag_beta_one() {
-        // a → b → c, β = 1: (1, 2, 3) / 6
+        // a → b → c, β = 1: (1, 2, 3)
         assert_close(
             &katz(&[vec![1], vec![2], vec![]], 1.0),
-            &[1.0 / 6.0, 1.0 / 3.0, 0.5],
+            &[1.0, 2.0, 3.0],
             1e-12,
+        );
+    }
+
+    #[test]
+    fn test_katz_unnormalized_limit() {
+        // c → a ⇄ b: c is reached by the empty walk only
+        assert_eq!(
+            Spectrum::new(&periodic()).katz_unnormalized_limit(),
+            [f64::INFINITY, f64::INFINITY, 1.0]
+        );
+        // x → y → a ⇄ b: at β = 1/ρ = 1, y is reached by the empty walk and
+        // by x → y
+        assert_eq!(
+            Spectrum::new(&succ_of(4, &[(0, 1), (1, 2), (2, 3), (3, 2)])).katz_unnormalized_limit(),
+            [1.0, 2.0, f64::INFINITY, f64::INFINITY]
+        );
+        // Every node is downstream of the basic triangle
+        assert!(
+            Spectrum::new(&triangle())
+                .katz_unnormalized_limit()
+                .iter()
+                .all(|x| x.is_infinite())
         );
     }
 
@@ -523,7 +599,11 @@ mod tests {
             golden(),
         ] {
             let s = Spectrum::new(&succ);
-            assert_close(&s.katz_limit(), &katz(&succ, (1.0 - 1e-6) / s.rho()), 1e-5);
+            assert_close(
+                &s.katz_limit(),
+                &normalized(katz(&succ, (1.0 - 1e-6) / s.rho())),
+                1e-5,
+            );
         }
     }
 
@@ -562,12 +642,20 @@ mod tests {
     }
 
     #[test]
-    fn test_katz_sums_to_one() {
+    fn test_katz_satisfies_recurrence() {
+        // k(β) = 1 + β k(β) A
         for succ in [golden(), parallel(), triangle()] {
             let rho = Spectrum::new(&succ).rho();
             for t in [0.5, 0.99] {
-                let sum: f64 = katz(&succ, t / rho).iter().sum();
-                assert!((sum - 1.0).abs() < 1e-12, "βρ {t}: {sum}");
+                let beta = t / rho;
+                let k = katz(&succ, beta);
+                let mut expected = vec![1.0; succ.len()];
+                for (i, list) in succ.iter().enumerate() {
+                    for &j in list {
+                        expected[j] += beta * k[i];
+                    }
+                }
+                assert_close(&k, &expected, 1e-9 * k.iter().fold(1.0, |m, &x| x.max(m)));
             }
         }
     }

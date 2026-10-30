@@ -198,19 +198,89 @@ pub fn components(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
     fit(pos, size)
 }
 
-/// Scales and translates positions, preserving proportions, so that their
-/// bounding box is centered in the canvas and fits within the margins.
-fn fit(mut pos: Vec<[f32; 2]>, size: [f32; 2]) -> Vec<[f32; 2]> {
-    if pos.is_empty() {
+/// Rotates the current positions by 90° clockwise on the screen, about the
+/// center of their bounding box.
+///
+/// The result is translated as little as possible so that it lies within the
+/// margins, or, if it does not fit, scaled down to fit and centered.
+pub fn rotate(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
+    // The y-axis points down, so clockwise takes right to down.
+    transform(graph, size, |[dx, dy]| [-dy, dx])
+}
+
+/// Flips the current positions horizontally, that is, left to right, about
+/// the center of their bounding box, then contains them in the canvas as
+/// [`rotate`] does.
+pub fn flip_horizontally(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
+    transform(graph, size, |[dx, dy]| [-dx, dy])
+}
+
+/// Flips the current positions vertically, that is, top to bottom, about the
+/// center of their bounding box, then contains them in the canvas as
+/// [`rotate`] does.
+pub fn flip_vertically(graph: &Graph, size: [f32; 2]) -> Vec<[f32; 2]> {
+    transform(graph, size, |[dx, dy]| [dx, -dy])
+}
+
+/// Applies a map to the offsets of the current positions from the center of
+/// their bounding box, and [contains](contain) the result in the canvas.
+fn transform(graph: &Graph, size: [f32; 2], map: impl Fn([f32; 2]) -> [f32; 2]) -> Vec<[f32; 2]> {
+    let pos: Vec<[f32; 2]> = graph.nodes().iter().map(|node| node.pos).collect();
+    let Some((min, max)) = bounds(&pos) else {
         return pos;
+    };
+    let center = [(min[0] + max[0]) / 2.0, (min[1] + max[1]) / 2.0];
+    let pos = pos
+        .into_iter()
+        .map(|p| {
+            let [dx, dy] = map([p[0] - center[0], p[1] - center[1]]);
+            [center[0] + dx, center[1] + dy]
+        })
+        .collect();
+    contain(pos, size)
+}
+
+/// Returns the corners of the bounding box of a set of positions, if any.
+fn bounds(pos: &[[f32; 2]]) -> Option<([f32; 2], [f32; 2])> {
+    if pos.is_empty() {
+        return None;
     }
     let (mut min, mut max) = ([f32::MAX; 2], [f32::MIN; 2]);
-    for p in &pos {
+    for p in pos {
         for c in 0..2 {
             min[c] = min[c].min(p[c]);
             max[c] = max[c].max(p[c]);
         }
     }
+    Some((min, max))
+}
+
+/// Translates positions as little as possible so that they lie within the
+/// margins, or, if their bounding box does not fit, [fits](fit) them.
+fn contain(mut pos: Vec<[f32; 2]>, size: [f32; 2]) -> Vec<[f32; 2]> {
+    let Some((min, max)) = bounds(&pos) else {
+        return pos;
+    };
+    if (0..2).any(|c| max[c] - min[c] > size[c] - 2.0 * MARGIN) {
+        return fit(pos, size);
+    }
+    let shift: Vec<f32> = (0..2)
+        .map(|c| (MARGIN - min[c]).max(0.0) + (size[c] - MARGIN - max[c]).min(0.0))
+        .collect();
+    for p in &mut pos {
+        for c in 0..2 {
+            p[c] += shift[c];
+        }
+    }
+    clamp(pos, size)
+}
+
+/// Scales and translates positions, preserving proportions, so that their
+/// bounding box is centered in the canvas and fits within the margins.
+fn fit(mut pos: Vec<[f32; 2]>, size: [f32; 2]) -> Vec<[f32; 2]> {
+    let Some((min, max)) = bounds(&pos) else {
+        return pos;
+    };
     let extent = [max[0] - min[0], max[1] - min[1]];
     let room = [
         (size[0] - 2.0 * MARGIN).max(0.0),
@@ -323,6 +393,76 @@ mod tests {
                 let d = (p[i][0] - p[j][0]).hypot(p[i][1] - p[j][1]);
                 assert!(d >= 100.0, "nodes {i} and {j} are {d} apart: {p:?}");
             }
+        }
+    }
+
+    /// Returns a graph whose nodes are at the given positions.
+    fn at(pos: &[[f32; 2]]) -> Graph {
+        let mut g = Graph::new(true);
+        for &p in pos {
+            g.add_node(p);
+        }
+        g
+    }
+
+    #[test]
+    fn test_rotate() {
+        // Center (200, 200): left goes to top, right to bottom, top to right,
+        // and bottom to left
+        let p = rotate(
+            &at(&[
+                [100.0, 200.0],
+                [300.0, 200.0],
+                [200.0, 150.0],
+                [200.0, 250.0],
+            ]),
+            SIZE,
+        );
+        assert_eq!(
+            p,
+            [
+                [200.0, 100.0],
+                [200.0, 300.0],
+                [250.0, 200.0],
+                [150.0, 200.0]
+            ]
+        );
+        // Four rotations are the identity
+        let start = [[100.0, 120.0], [400.0, 200.0], [250.0, 330.0]];
+        let mut g = at(&start);
+        for _ in 0..4 {
+            let p = rotate(&g, SIZE);
+            assert!(inside(&p), "{p:?}");
+            g.set_positions(&p);
+        }
+        let p: Vec<_> = g.nodes().iter().map(|node| node.pos).collect();
+        assert_eq!(p, start);
+    }
+
+    #[test]
+    fn test_rotate_contains() {
+        // Rotating a wide graph near the border moves it inside the margins
+        let p = rotate(&at(&[[100.0, 80.0], [400.0, 80.0]]), SIZE);
+        assert!(inside(&p), "{p:?}");
+        assert_eq!(p[1][1] - p[0][1], 300.0);
+        // A graph that does not fit once rotated is scaled down
+        let p = rotate(&at(&[[MARGIN, 300.0], [SIZE[0] - MARGIN, 300.0]]), SIZE);
+        assert!(inside(&p), "{p:?}");
+        assert_eq!(p[0][0], p[1][0]);
+        assert!(p[1][1] - p[0][1] < SIZE[1], "{p:?}");
+    }
+
+    #[test]
+    fn test_flips() {
+        let start = [[100.0, 120.0], [400.0, 200.0], [250.0, 330.0]];
+        let h = flip_horizontally(&at(&start), SIZE);
+        assert_eq!(h, [[400.0, 120.0], [100.0, 200.0], [250.0, 330.0]]);
+        let v = flip_vertically(&at(&start), SIZE);
+        assert_eq!(v, [[100.0, 330.0], [400.0, 250.0], [250.0, 120.0]]);
+        assert_eq!(flip_horizontally(&at(&h), SIZE), start);
+        assert_eq!(flip_vertically(&at(&v), SIZE), start);
+        for map in [rotate, flip_horizontally, flip_vertically] {
+            assert!(map(&at(&[]), SIZE).is_empty());
         }
     }
 
