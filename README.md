@@ -40,6 +40,26 @@ cargo run --release
 The crate is compiled with `-C target-cpu=native` (see `.cargo/config.toml`),
 so build it on the machine that runs it.
 
+## Web Build and Built-In Examples
+
+The app also builds for the web (WebAssembly). `web/build.sh` writes
+`dist/centrality-explorer.html`, a single self-contained page that runs in any
+browser and as an embedded demo in [Eigendeck](https://github.com/dgleich/eigendeck)
+presentations. It needs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli`
+at the version in `Cargo.lock`:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version <version in Cargo.lock>
+sh web/build.sh
+```
+
+A web page cannot open or save files, so the Examples menu offers a few small
+graphs used in teaching: the Fauci email replied-to network (directed), Zachary's
+karate club, the dolphins, political books, and college football networks. The
+web build starts on the first of them. The graphs are in `data/examples`, made by
+`tools/convert_examples.py`, which records their sources.
+
 ## Reading the Screen
 
 - The graph is on the left. On the right, the name of the current centrality
