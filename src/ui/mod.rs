@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! The user interface.
 //!
 //! The [`App`] reads the [`Session`] every frame and sends edits back as new

@@ -1,9 +1,8 @@
 # Centrality Explorer
 
-A teaching aid to build intuition about centrality measures. The instructor
-edits a small graph at a projector, and the class watches, in real time, how
-the score of each node changes. There are eight centralities, in three
-families:
+A visual tool to build intuition about centrality measures. You edit a small
+graph and watch, in real time, how the score of each node changes. There are
+eight centralities:
 
 | Family | Centralities | x-axis of the plot |
 |---|---|---|

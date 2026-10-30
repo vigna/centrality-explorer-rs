@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! The editing session.
 
 use std::path::{Path, PathBuf};
@@ -782,7 +788,7 @@ mod tests {
     #[test]
     fn test_path_follows_generation() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
-        let path = dir.path().join("lecture.json");
+        let path = dir.path().join("example.json");
         let (mut s, _, _) = two_nodes();
         s.save_as(&path)?;
         s.commit(Graph::new(true));

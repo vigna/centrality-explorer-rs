@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! Exact PageRank.
 //!
 //! PageRank is computed for a [`Chain`], the transition structure of a graph

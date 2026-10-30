@@ -34,7 +34,7 @@
 ### Task 1: Rename to Centrality Explorer
 
 **Files:**
-- Modify: `Cargo.toml` (name `centrality-explorer`; description "A teaching aid to build intuition about centrality measures"), `src/main.rs`, `tests/test_ui.rs` (crate paths), `src/ui/mod.rs:26` (`NAME`), `src/ui/dialogs.rs:13` (`FILTER` = `"Centrality Explorer graph"`) and its `test_window_title`, `README.md` (title only; content in Task 8)
+- Modify: `Cargo.toml` (name `centrality-explorer`; description "Visual explorer for centrality measures"), `src/main.rs`, `tests/test_ui.rs` (crate paths), `src/ui/mod.rs:26` (`NAME`), `src/ui/dialogs.rs:13` (`FILTER` = `"Centrality Explorer graph"`) and its `test_window_title`, `README.md` (title only; content in Task 8)
 
 **Interfaces:**
 - Produces: crate path `centrality_explorer::…`, used by all later tasks' integration tests.
@@ -43,8 +43,8 @@
 
 ```rust
 assert_eq!(window_title(None, true), "Centrality Explorer");
-assert_eq!(window_title(Some(Path::new("/x/lecture.json")), false), "Centrality Explorer — lecture.json");
-assert_eq!(window_title(Some(Path::new("/x/lecture.json")), true), "Centrality Explorer — lecture.json*");
+assert_eq!(window_title(Some(Path::new("/x/example.json")), false), "Centrality Explorer — example.json");
+assert_eq!(window_title(Some(Path::new("/x/example.json")), true), "Centrality Explorer — example.json*");
 ```
 
 - [ ] **Step 2: Run `cargo test test_window_title`.** Expected: FAIL.
@@ -347,7 +347,7 @@ All vectors pass through a private `fn normalized(v: Vec<f64>) -> Vec<f64>` (div
 ```rust
 #[test]
 fn test_every_centrality_on_small_graphs() { // Review Focus 1
-    // empty; one node; one node with a self-loop; three nodes, no arcs; the 5-node lecture example
+    // empty; one node; one node with a self-loop; three nodes, no arcs; the 5-node example graph
     for g in small_graphs() {
         for c in Centrality::ALL {
             let r = Ranking::new(&g, c);
@@ -367,29 +367,29 @@ fn test_every_centrality_on_small_graphs() { // Review Focus 1
 }
 #[test]
 fn test_ranking_axes() {
-    let lecture = lecture_graph(); // a→b→c→a, c→d, d⇄e
-    assert_eq!(Ranking::new(&lecture, Centrality::PageRank).axis, Axis::Alpha);
-    let katz = Ranking::new(&lecture, Centrality::Katz);
+    let example = example_graph(); // a→b→c→a, c→d, d⇄e
+    assert_eq!(Ranking::new(&example, Centrality::PageRank).axis, Axis::Alpha);
+    let katz = Ranking::new(&example, Centrality::Katz);
     assert_eq!(katz.axis, Axis::BetaRho);
     assert_eq!(katz.hulls.len(), 2); // a b c and d e both have ρ = 1
     assert_eq!(katz.hull_label, "dominant");
     assert_eq!(Ranking::new(&path_graph(), Centrality::Katz).axis, Axis::Beta);
-    let seeley = Ranking::new(&lecture, Centrality::Seeley);
+    let seeley = Ranking::new(&example, Centrality::Seeley);
     assert_eq!((seeley.axis, seeley.xs.len()), (Axis::Iteration, ITERATIONS + 1));
     let eig = Ranking::new(&path_graph(), Centrality::Eigenvector); // a → b → c
     assert_eq!((eig.xs.len(), eig.vanished), (3, Some(3)));
     assert!(eig.scores(10.0).iter().all(|&x| x == 0.0));
-    let flat = Ranking::new(&lecture, Centrality::Harmonic);
+    let flat = Ranking::new(&example, Centrality::Harmonic);
     assert_eq!((flat.axis, flat.xs.clone()), (Axis::Flat, vec![0.0, 1.0]));
     assert!(flat.hulls.is_empty() && flat.dangling.is_empty());
 }
 #[test]
 fn test_katz_ranking_endpoints() {
-    let r = Ranking::new(&lecture_graph(), Centrality::Katz);
+    let r = Ranking::new(&example_graph(), Centrality::Katz);
     assert_close(&r.scores(0.0), &[0.2; 5], 1e-15);
-    let s = Spectrum::new(&lecture_graph().successors());
+    let s = Spectrum::new(&example_graph().successors());
     assert_close(&r.scores(1.0), &s.katz_limit(), 1e-15);
-    assert_close(&r.scores(0.85), &katz(&lecture_graph().successors(), 0.85 / s.rho()), 1e-12);
+    assert_close(&r.scores(0.85), &katz(&example_graph().successors(), 0.85 / s.rho()), 1e-12);
 }
 #[test]
 fn test_flat_rankings_are_normalized() {
@@ -589,7 +589,7 @@ fn test_vanished_eigenvector_hover() { // Review Focus 2
 fn test_every_centrality_renders() {
     let mut h = harness();
     h.run();
-    // commit the five-node lecture example as `lecture_harness` does (no wgpu needed)
+    // commit the five-node example graph as `example_harness` does (no wgpu needed)
     for c in Centrality::ALL {
         h.state_mut().session_mut().set_centrality(c);
         h.run();
@@ -598,12 +598,12 @@ fn test_every_centrality_renders() {
 ```
 In `plot.rs`: `test_value_at_single_sample` asserts `value_at(&[0.0], &[0.3], 5.0) == 0.3`.
 
-Add an ignored, GPU-only `test_render_centralities`. It renders the lecture example after the edit that closes {d, e}, under each centrality, to `target/screenshots/<lowercase name>.png`, following the existing render tests.
+Add an ignored, GPU-only `test_render_centralities`. It renders the example graph after the edit that closes {d, e}, under each centrality, to `target/screenshots/<lowercase name>.png`, following the existing render tests.
 
 - [ ] **Step 2: Run `cargo test`.** Expected: the new tests FAIL.
 - [ ] **Step 3: Implement the decisions above.**
 - [ ] **Step 4: Run `cargo test`.** Expected: PASS.
-- [ ] **Step 5: Run `cargo test --test test_ui -- --ignored test_render_centralities` and inspect every PNG.** Check four things: the centrality name is readable; the Seeley/eigenvector curves zigzag on the lecture example (the d ⇄ e sink has period 2); the Katz hulls are labeled "dominant"; and the flat centralities show horizontal lines with no slider. Fix anything that is off.
+- [ ] **Step 5: Run `cargo test --test test_ui -- --ignored test_render_centralities` and inspect every PNG.** Check four things: the centrality name is readable; the Seeley/eigenvector curves zigzag on the example graph (the d ⇄ e sink has period 2); the Katz hulls are labeled "dominant"; and the flat centralities show horizontal lines with no slider. Fix anything that is off.
 - [ ] **Step 6: Commit** ("Add centrality selection, per-centrality axes, and sliders").
 
 ---
@@ -614,7 +614,7 @@ Add an ignored, GPU-only `test_render_centralities`. It renders the lecture exam
 - Modify: `README.md`, `CHANGELOG.md`, `Cargo.toml` (version `0.2.0`)
 
 - [ ] **Step 1: Rewrite the README.**
-  - **Intro:** a teaching aid about centrality, with the three families.
+  - **Intro:** a visual tool about centrality, with the three families.
   - **Reading the Screen:** per family, what the plot, slider, hulls, and dashed outlines mean, and that the before-the-edit curves survive a switch.
   - **Shortcuts:** add Cmd-Alt-1…7.
   - **The Mathematics:** one subsection per centrality, from the spec, including incoming orientation, normalization, the Katz axis (βρ, or β when ρ = 0), the exact limit and its support, power-method convergence and oscillation, and the *Axioms for Centrality* definitions.

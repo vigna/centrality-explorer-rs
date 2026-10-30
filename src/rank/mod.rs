@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! Exact centralities of small graphs.
 
 mod geometric;
@@ -713,7 +719,7 @@ pub(crate) mod tests {
     }
 
     /// *a* → *b* → *c* → *a*, *c* → *d*, *d* ⇄ *e*.
-    fn lecture_graph() -> Graph {
+    fn example_graph() -> Graph {
         graph(true, 5, &[(0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 3)])
     }
 
@@ -728,14 +734,14 @@ pub(crate) mod tests {
     }
 
     /// The empty graph; one node; one node with a self-loop; three nodes and
-    /// no arcs; the lecture example.
+    /// no arcs; the example graph.
     fn small_graphs() -> Vec<Graph> {
         vec![
             graph(true, 0, &[]),
             graph(true, 1, &[]),
             graph(true, 1, &[(0, 0)]),
             graph(true, 3, &[]),
-            lecture_graph(),
+            example_graph(),
         ]
     }
 
@@ -826,12 +832,12 @@ pub(crate) mod tests {
 
     #[test]
     fn test_ranking_axes() {
-        let lecture = lecture_graph();
+        let example = example_graph();
         assert_eq!(
-            Ranking::new(&lecture, Centrality::PageRank).axis,
+            Ranking::new(&example, Centrality::PageRank).axis,
             Axis::Alpha
         );
-        let katz = Ranking::new(&lecture, Centrality::Katz);
+        let katz = Ranking::new(&example, Centrality::Katz);
         assert_eq!(katz.axis, Axis::BetaRho);
         assert_eq!(katz.hulls.len(), 2); // a b c and d e both have ρ = 1
         assert_eq!(katz.hull_label, "dominant");
@@ -839,7 +845,7 @@ pub(crate) mod tests {
             Ranking::new(&path_graph(), Centrality::Katz).axis,
             Axis::Beta
         );
-        let seeley = Ranking::new(&lecture, Centrality::Seeley);
+        let seeley = Ranking::new(&example, Centrality::Seeley);
         assert_eq!(
             (seeley.axis, seeley.xs.len()),
             (Axis::Iteration(DEFAULT_ITERATIONS), DEFAULT_ITERATIONS + 1)
@@ -847,20 +853,20 @@ pub(crate) mod tests {
         let eig = Ranking::new(&path_graph(), Centrality::Eigenvector);
         assert_eq!((eig.xs.len(), eig.vanished), (3, Some(3)));
         assert!(eig.scores(10.0).iter().all(|&x| x == 0.0));
-        let flat = Ranking::new(&lecture, Centrality::Harmonic);
+        let flat = Ranking::new(&example, Centrality::Harmonic);
         assert_eq!((flat.axis, flat.xs.clone()), (Axis::Flat, vec![0.0, 1.0]));
         assert!(flat.hulls.is_empty() && flat.dangling.is_empty());
     }
 
     #[test]
     fn test_katz_ranking_endpoints() {
-        let r = Ranking::new(&lecture_graph(), Centrality::Katz);
+        let r = Ranking::new(&example_graph(), Centrality::Katz);
         assert_close(&r.scores(0.0), &[0.2; 5], 1e-15);
-        let s = Spectrum::new(&lecture_graph().successors());
+        let s = Spectrum::new(&example_graph().successors());
         assert_close(&r.scores(1.0), &s.katz_limit(), 1e-15);
         assert_close(
             &r.scores(0.85),
-            &normalized(katz(&lecture_graph().successors(), 0.85 / s.rho())),
+            &normalized(katz(&example_graph().successors(), 0.85 / s.rho())),
             1e-12,
         );
     }
@@ -921,7 +927,7 @@ pub(crate) mod tests {
     fn test_families() {
         assert_eq!(Centrality::ALL[0], Centrality::InDegree);
         for c in Centrality::ALL {
-            let axis = Ranking::new(&lecture_graph(), c).axis;
+            let axis = Ranking::new(&example_graph(), c).axis;
             let expected = match axis {
                 Axis::Flat => Family::Geometric,
                 Axis::Iteration(_) => Family::Eigenvector,
@@ -947,8 +953,8 @@ pub(crate) mod tests {
     fn test_traditional_distributions() {
         for c in [Centrality::Seeley, Centrality::PageRank] {
             let (r, t) = (
-                Ranking::new(&lecture_graph(), c),
-                traditional(&lecture_graph(), c),
+                Ranking::new(&example_graph(), c),
+                traditional(&example_graph(), c),
             );
             assert_eq!(t.norm, Norm::L1);
             assert_eq!(r.curves, t.curves);
@@ -957,13 +963,13 @@ pub(crate) mod tests {
 
     #[test]
     fn test_traditional_katz() {
-        let r = traditional(&lecture_graph(), Centrality::Katz);
+        let r = traditional(&example_graph(), Centrality::Katz);
         assert_eq!(r.norm, Norm::None);
         assert!(r.unbounded);
         // The right end is not sampled
         assert_eq!(r.xs.len(), SAMPLES);
         assert_close(&r.scores(0.0), &[1.0; 5], 1e-15);
-        let succ = lecture_graph().successors();
+        let succ = example_graph().successors();
         let s = Spectrum::new(&succ);
         assert_close(&r.scores(0.85), &katz(&succ, 0.85 / s.rho()), 1e-12);
         assert!(r.scores(1.0).iter().all(|x| x.is_infinite()));
@@ -977,7 +983,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_at() {
-        let r = Ranking::new(&lecture_graph(), Centrality::PageRank);
+        let r = Ranking::new(&example_graph(), Centrality::PageRank);
         let frozen = r.at(0.85);
         assert_eq!(frozen.axis, Axis::Flat);
         assert_eq!(frozen.frozen, Some((Axis::Alpha, 0.85)));
@@ -996,7 +1002,7 @@ pub(crate) mod tests {
             iterations: 7,
             ..Options::default()
         };
-        let r = Ranking::with_options(&lecture_graph(), Centrality::Seeley, options);
+        let r = Ranking::with_options(&example_graph(), Centrality::Seeley, options);
         assert_eq!((r.axis, r.xs.len()), (Axis::Iteration(7), 8));
         assert_eq!(r.axis.x_max(), 7.0);
         // The iterates of a → b → c vanish at k = 3, whatever K ≥ 3

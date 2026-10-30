@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! Node layouts.
 //!
 //! Every layout returns positions aligned with [`Graph::nodes`], in

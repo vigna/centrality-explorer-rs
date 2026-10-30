@@ -1,6 +1,12 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! The graph document model.
 //!
-//! A [`Graph`] is what the instructor edits: nodes with stable identifiers,
+//! A [`Graph`] is what the user edits: nodes with stable identifiers,
 //! labels, positions, and colors, plus a set of arcs. Node identifiers are
 //! never reused within a graph, so colors and before/after curves can be
 //! keyed by [`NodeId`] across edits.
@@ -37,7 +43,7 @@ pub struct Node {
     pub color: usize,
 }
 
-/// A directed or undirected graph, as edited by the instructor.
+/// A directed or undirected graph, as edited by the user.
 ///
 /// Undirected graphs store each edge as a pair of opposite arcs (a self-loop
 /// is a single arc), so the PageRank code sees every graph as directed.

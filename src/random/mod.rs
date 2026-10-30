@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! Random graphs with power-law degrees.
 
 use rand::rngs::SmallRng;
@@ -15,7 +21,7 @@ use crate::graph::Graph;
 /// min(1, *w*<sub>out</sub>(*u*) *w*<sub>in</sub>(*v*) / *W*).
 ///
 /// Sparse graphs from this model often have no closed component containing
-/// a cycle; this is expected, and the instructor adds the missing structure
+/// a cycle; this is expected, and the user adds the missing structure
 /// by hand.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ChungLu {

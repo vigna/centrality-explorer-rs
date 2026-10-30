@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! Saving and loading graphs as JSON.
 //!
 //! The format (version 1) is
@@ -242,7 +248,7 @@ mod tests {
     #[test]
     fn test_session_save_open() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
-        let path = dir.path().join("lecture.json");
+        let path = dir.path().join("example.json");
         let mut s = Session::new(true);
         let mut g = s.graph().clone();
         g.add_node([5.0, 5.0]);

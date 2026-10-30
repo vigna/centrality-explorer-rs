@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 use centrality_explorer::ui::App;
 use egui_kittest::Harness;
 
@@ -148,7 +154,7 @@ fn test_canvas_backspace_deletes_hovered() {
     assert!(h.state().session().graph().node(a).is_none());
 }
 
-/// Renders the lecture example offscreen to `target/screenshots/` for visual
+/// Renders the example graph offscreen to `target/screenshots/` for visual
 /// inspection. Run with `cargo test --test test_ui -- --ignored`.
 #[test]
 #[ignore]
@@ -273,10 +279,10 @@ fn test_quit_asks_about_unsaved_changes() {
     assert!(h.query_by_label("Unsaved Changes").is_some());
 }
 
-/// Returns the lecture example on the graph of the harness before and after
-/// the edit that closes {d, e}, that is, a → b → c → a, c → d → e, and the
+/// Builds the example graph on the harness graph and returns it before and
+/// after the edit that closes {d, e}, that is, a → b → c → a, c → d → e, and the
 /// same graph with e → d, with the identifiers of a, …, e.
-fn lecture_example(h: &Harness<'static, App>) -> (Graph, Graph, Vec<NodeId>) {
+fn example_edit(h: &Harness<'static, App>) -> (Graph, Graph, Vec<NodeId>) {
     let mut before = h.state().session().graph().clone();
     let pos = [
         [120.0, 200.0],
@@ -303,12 +309,12 @@ fn wgpu_harness() -> Harness<'static, App> {
         .build_eframe(|cc| App::new(cc))
 }
 
-/// Builds the lecture example (after closing {d, e}) in a light-theme
+/// Builds the example graph (after closing {d, e}) in a light-theme
 /// harness rendering with wgpu.
-fn lecture_harness() -> (Harness<'static, App>, Vec<NodeId>) {
+fn example_harness() -> (Harness<'static, App>, Vec<NodeId>) {
     let mut h = wgpu_harness();
     h.run();
-    let (_, after, ids) = lecture_example(&h);
+    let (_, after, ids) = example_edit(&h);
     h.state_mut().session_mut().commit(after);
     h.run();
     (h, ids)
@@ -333,7 +339,7 @@ fn ring_luminance(img: &image::RgbaImage, center: egui::Pos2, radius: f32) -> f3
 #[test]
 #[ignore = "needs a GPU"]
 fn test_curve_hover_highlights_node() {
-    let (mut h, _) = lecture_harness();
+    let (mut h, _) = example_harness();
     // Pointer on an empty part of the plot.
     h.hover_at(egui::pos2(900.0, 80.0));
     h.run();
@@ -357,13 +363,13 @@ fn test_curve_hover_highlights_node() {
     assert!(after < before - 40.0, "before {before}, after {after}");
 }
 
-/// Renders the lecture example in the components layout, laid out at zoom 1
+/// Renders the example graph in the components layout, laid out at zoom 1
 /// and then shown at zoom 1.5, offscreen to `target/screenshots/` for visual
 /// inspection. Run with `cargo test --test test_ui -- --ignored`.
 #[test]
 #[ignore = "needs a GPU"]
 fn test_render_zoomed_components() {
-    let (mut h, _) = lecture_harness();
+    let (mut h, _) = example_harness();
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num3);
     for _ in 0..90 {
         h.step();
@@ -517,7 +523,7 @@ fn test_l1_normalization_menu() {
 fn test_every_centrality_renders() {
     let mut h = harness();
     h.run();
-    let (_, after, _) = lecture_example(&h);
+    let (_, after, _) = example_edit(&h);
     h.state_mut().session_mut().commit(after);
     h.run();
     for c in Centrality::ALL {
@@ -549,7 +555,7 @@ fn test_every_centrality_renders() {
 /// The directory of the screenshots in the README's Examples section.
 const SCREENSHOTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/screenshots");
 
-/// Renders the lecture example after the edit that closes {d, e} under each
+/// Renders the example graph after the edit that closes {d, e} under each
 /// centrality offscreen to [`SCREENSHOTS`], regenerating the README's
 /// examples. Run with `cargo test --test test_ui -- --ignored`.
 #[test]
@@ -557,7 +563,7 @@ const SCREENSHOTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/screenshots");
 fn test_render_centralities() {
     let mut h = wgpu_harness();
     h.run();
-    let (before, after, _) = lecture_example(&h);
+    let (before, after, _) = example_edit(&h);
     std::fs::create_dir_all(SCREENSHOTS).unwrap();
     for c in Centrality::ALL {
         // The edit after the switch, so that the dashed curves show the

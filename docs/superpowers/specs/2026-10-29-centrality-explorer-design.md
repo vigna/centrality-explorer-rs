@@ -4,16 +4,16 @@ Date: 2026-10-29
 
 ## Intent
 
-PageRank Explorer (version 0.1.0, this repository) is a teaching aid: the
-instructor edits a small graph at a projector, and the class watches each
-node's PageRank, plotted as a function of α, react to every edit. This work
-generalizes it to seven centralities and renames it **Centrality Explorer**.
+PageRank Explorer (version 0.1.0, this repository) is a visual tool to build
+intuition: you edit a small graph and watch each node's PageRank, plotted as
+a function of α, react to every edit. This work generalizes it to seven
+centralities and renames it **Centrality Explorer**.
 The principle stays the same: one curve per node, in the node's color; node
 size showing the score; the curves from before the last edit kept as faded
 dashed lines; everything updated instantly on every edit.
 
 The seven centralities come in three families, and the families are the
-point of the lecture:
+point:
 
 | Family | Centrality | x-axis of the plot |
 |---|---|---|
@@ -53,7 +53,7 @@ curves zigzag forever, which the damped limits hide.
 ## Anti-goals (failure even if it technically works)
 
 - Power-method curves that are averaged, smoothed, or otherwise made to
-  converge: the zigzag on periodic graphs is the lesson.
+  converge: the zigzag on periodic graphs is the point.
 - A Katz curve that is wrong or jagged near βρ = 1, or whose right end is not
   the exact limit.
 - Losing anything that works today (gestures, colors, undo, before/after,
@@ -196,7 +196,7 @@ for PageRank, βρ for Katz, one *k* shared by the two power methods).
 
 **Before/after (user's decision):** the faded dashed curves always show the
 current centrality on the graph from before the last edit, so they survive a
-switch. The instructor can make an edit under PageRank, then switch to Katz
+switch. You can make an edit under PageRank, then switch to Katz
 and see the same edit's effect there; the user also expects people to use
 this to compare centralities. The session therefore keeps the graph from
 before the last edit, not just its curves. The ghost follows today's rules

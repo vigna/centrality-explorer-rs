@@ -1,11 +1,17 @@
 [package]
 name = "centrality-explorer"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
-description = "A teaching aid to build intuition about centrality measures"
-license = "Apache-2.0 OR LGPL-2.1-or-later"
-readme = "README.md"
+description = "Visual explorer for centrality measures"
 authors = ["Sebastiano Vigna <sebastiano.vigna@unimi.it>"]
+repository = "https://github.com/vigna/centrality-explorer-rs"
+license = "Apache-2.0 OR MIT"
+readme = "README.md"
+categories = ["visualization", "mathematics", "gui"]
+keywords = ["centrality", "pagerank", "graphs", "network-analysis"]
+exclude = ["docs/", "*.pdf"]
+documentation = "https://docs.rs/centrality-explorer"
+rust-version = "1.95"
 
 [dependencies]
 anyhow = "1"

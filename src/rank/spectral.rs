@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! Katz's index and the spectral structure of the adjacency matrix.
 //!
 //! The graph is given by successor lists, and *A* is its adjacency matrix:

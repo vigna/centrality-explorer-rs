@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Sebastiano Vigna
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
+ */
+
 //! Dialogs, file commands, and the window title.
 
 use std::path::Path;
@@ -330,12 +336,12 @@ mod tests {
     fn test_window_title() {
         assert_eq!(window_title(None, true), "Centrality Explorer");
         assert_eq!(
-            window_title(Some(Path::new("/x/lecture.json")), false),
-            "Centrality Explorer — lecture.json"
+            window_title(Some(Path::new("/x/example.json")), false),
+            "Centrality Explorer — example.json"
         );
         assert_eq!(
-            window_title(Some(Path::new("/x/lecture.json")), true),
-            "Centrality Explorer — lecture.json*"
+            window_title(Some(Path::new("/x/example.json")), true),
+            "Centrality Explorer — example.json*"
         );
     }
 }
