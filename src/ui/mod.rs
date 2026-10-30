@@ -107,7 +107,17 @@ const SHORTCUTS: [(KeyboardShortcut, Command); 20] = [
     (COMPONENTS, Command::Layout(layouts::components)),
 ];
 
+/// Starts the application on a canvas (web build).
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindgen::JsValue> {
+    eframe::WebRunner::new()
+        .start(canvas, eframe::WebOptions::default(), Box::new(|cc| Ok(Box::new(App::new(cc)))))
+        .await
+}
+
 /// Runs the application.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
