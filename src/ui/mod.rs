@@ -76,6 +76,8 @@ enum Command {
     Undo,
     Redo,
     Random,
+    /// Loads the built-in example with this index.
+    Example(usize),
     Layout(Layout),
     Centrality(Centrality),
     Fullscreen,
@@ -112,7 +114,16 @@ const SHORTCUTS: [(KeyboardShortcut, Command); 20] = [
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindgen::JsValue> {
     eframe::WebRunner::new()
-        .start(canvas, eframe::WebOptions::default(), Box::new(|cc| Ok(Box::new(App::new(cc)))))
+        .start(
+            canvas,
+            eframe::WebOptions::default(),
+            Box::new(|cc| {
+                // The web build cannot open files, so it starts on an example.
+                let mut app = App::new(cc);
+                app.load_example(0);
+                Ok(Box::new(app))
+            }),
+        )
         .await
 }
 
@@ -213,6 +224,18 @@ impl App {
         self.session.commit(graph);
     }
 
+    /// Replaces the graph (undoably) with a built-in example, laid out for the
+    /// current canvas size, and animates it out of the canvas center.
+    pub fn load_example(&mut self, index: usize) {
+        let mut graph = crate::examples::EXAMPLES[index].graph();
+        let size = self.canvas_rect.size();
+        let pos = crate::layouts::force(&graph, [size.x, size.y]);
+        graph.set_positions(&pos);
+        self.animation = Some(Animation::new(Default::default(), self.now));
+        self.session.commit(graph);
+        self.prune();
+    }
+
     /// Starts an animation from the current node positions.
     fn animate_from_current(&mut self) {
         let from: HashMap<NodeId, [f32; 2]> = self
@@ -261,6 +284,7 @@ impl App {
             }
             Command::Quit => self.quit(ctx),
             Command::Random => self.open_random_dialog(),
+            Command::Example(index) => self.load_example(index),
         }
     }
 
@@ -360,6 +384,11 @@ impl App {
                     None,
                     Command::Layout(layouts::flip_vertically),
                 );
+            });
+            ui.menu_button("Examples", |ui| {
+                for (index, example) in crate::examples::EXAMPLES.iter().enumerate() {
+                    item(ui, example.name, None, Command::Example(index));
+                }
             });
             ui.menu_button("Centrality", |ui| {
                 centrality = centrality_menu(ui, current, directed);

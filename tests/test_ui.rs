@@ -611,3 +611,14 @@ fn test_render_eigenvector_vanishing() {
         .save(format!("{SCREENSHOTS}/eigenvector_vanishing.png"))
         .unwrap();
 }
+
+#[test]
+fn test_load_example_is_undoable() {
+    let mut h = harness();
+    h.run();
+    h.state_mut().load_example(1);
+    h.run();
+    assert_eq!(h.state().session().graph().len(), 34);
+    h.state_mut().session_mut().undo();
+    assert!(h.state().session().graph().is_empty());
+}

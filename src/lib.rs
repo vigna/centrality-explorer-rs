@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 pub mod edit;
+pub mod examples;
 pub mod files;
 pub mod graph;
 pub mod layouts;
