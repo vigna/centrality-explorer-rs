@@ -1,6 +1,8 @@
-"""Table 2 of H. Bott (1928), "Social responses among eleven children under
-five categories" (Genetic Psychology Monographs, p. 62), transcribed by hand
-from a scan of the printed page.
+"""Table 2, "Social responses among eleven children under five categories"
+(p. 62), of E. A. Bott, W. E. Blatz, N. Chant and H. Bott, "Observation and
+training of fundamental habits in young children", Genetic Psychology
+Monographs 4(1), July 1928, transcribed by hand from a scan of the printed
+page.
 
 Every row and column category total printed in the table matches the cells
 below (run this file to check). Three printed overall totals disagree with

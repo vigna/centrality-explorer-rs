@@ -32,9 +32,11 @@ Sources (from the Eigendeck repo, github.com/dgleich/eigendeck):
       - the World Cup 1998 player market (L. Krempel): an arc from a national
         team's country to a country where its players had club contracts.
     Weights, layers other than the one named, and duplicate arcs are dropped.
-  * the five graphs of H. Bott's (1928) table of social responses among eleven
-    nursery-school children (tools/bott_table2.py, transcribed from the printed
-    table): an arc from a child to another toward whom they showed the
+  * the five graphs of the table of social responses among eleven
+    nursery-school children in E. A. Bott, W. E. Blatz, N. Chant and H. Bott,
+    "Observation and training of fundamental habits in young children",
+    Genetic Psychology Monographs 4(1), 1928 (tools/bott_table2.py, transcribed
+    from the printed table): an arc from a child to another toward whom they showed the
     behaviour, at least twice for talking, interference and watching, and at
     least once for the rarer imitation and cooperation.
 

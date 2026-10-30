@@ -54,11 +54,18 @@ cargo install wasm-bindgen-cli --version <version in Cargo.lock>
 sh web/build.sh
 ```
 
-A web page cannot open or save files, so the Examples menu offers a few small
-graphs used in teaching: the Fauci email replied-to network (directed), Zachary's
-karate club, the dolphins, political books, and college football networks. The
-web build starts on the first of them. The graphs are in `data/examples`, made by
-`tools/convert_examples.py`, which records their sources.
+A web page cannot open or save files, so the Examples menu offers small graphs
+used in teaching. The directed ones are the Fauci email replied-to network, the
+examples of the magnetic matrix powers paper (Gleich 2006, a seven-node teaser,
+Sampson's monastery, the Florida Bay food web), seven classic networks from
+Netzschleuder (McGrew's preschool, Guhl's hens, Krackhardt's managers, Moreno's
+sociogram, the Galesburg physicians, Madoff's feeder funds, the 1998 World Cup
+player market), and five behaviours among the nursery-school children of Bott,
+Blatz, Chant and Bott (1928). The undirected ones are Zachary's karate club and
+the dolphins, political books and college football networks. The web build
+starts on the first of them. The graphs are in `data/examples`, made by
+`tools/convert_examples.py`, which records the source of each one and the
+direction of its arcs.
 
 ## Reading the Screen
 
