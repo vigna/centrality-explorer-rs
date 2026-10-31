@@ -429,9 +429,13 @@ impl Ranking {
         match centrality {
             Centrality::PageRank | Centrality::Seeley => {
                 let chain = Chain::new(succ);
-                r.hulls = r.node_ids(terminal_sccs(chain.successors()).into_iter().filter(
-                    |component| !(component.len() == 1 && chain.is_dangling(component[0])),
-                ));
+                // In an undirected graph the buckets are just the connected
+                // components with an edge, so they are not worth marking.
+                if graph.is_directed() {
+                    r.hulls = r.node_ids(terminal_sccs(chain.successors()).into_iter().filter(
+                        |component| !(component.len() == 1 && chain.is_dangling(component[0])),
+                    ));
+                }
                 r.hull_label = "buckets";
                 r.dangling = (0..n)
                     .filter(|&v| chain.is_dangling(v))
@@ -654,6 +658,16 @@ pub(crate) mod tests {
             Ranking::new(&g, Centrality::PageRank).hulls,
             vec![vec![ids[2]]]
         );
+    }
+
+    #[test]
+    fn test_no_buckets_marked_in_undirected_graphs() {
+        let mut g = Graph::new(false);
+        let ids: Vec<_> = (0..3).map(|i| g.add_node([i as f32, 0.0])).collect();
+        g.add_arc(ids[0], ids[1]);
+        for c in [Centrality::PageRank, Centrality::Seeley] {
+            assert!(Ranking::new(&g, c).hulls.is_empty());
+        }
     }
 
     #[test]

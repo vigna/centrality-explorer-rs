@@ -192,11 +192,13 @@ normalization of the plot; hovering a curve highlights it and its node.
   dominant classes: strongly connected components whose spectral radius is
   ρ, which determine the limit as βρ → 1. There are no dashed outlines,
   since dangling nodes are not special for the adjacency matrix.
-- For PageRank, shaded hulls labeled “buckets” mark the buckets: terminal
-  strongly connected components (groups of nodes with no edge leaving them)
-  other than lone dangling nodes, that is, nodes with no outgoing edges (the
-  sinks of the graph). A dangling node is terminal, but the walk leaves it by
-  jumping to every node, so it does not keep the rank that enters it.
+- For PageRank, in directed graphs, shaded hulls labeled “buckets” mark the
+  buckets: terminal strongly connected components (groups of nodes with no
+  edge leaving them) other than lone dangling nodes, that is, nodes with no
+  outgoing edges (the sinks of the graph). A dangling node is terminal, but
+  the walk leaves it by jumping to every node, so it does not keep the rank
+  that enters it. In undirected graphs the buckets are just the connected
+  components with an edge, so they are not marked.
 - For PageRank, nodes with a dashed outline are dangling: they have no
   outgoing edges, so the walk jumps from them to a node chosen uniformly at
   random.

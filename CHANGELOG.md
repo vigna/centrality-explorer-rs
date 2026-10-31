@@ -1,5 +1,12 @@
 # Change Log
 
+## [Unreleased]
+
+### Improved
+
+- Buckets are no longer marked in undirected graphs, where they are just the
+  connected components with an edge.
+
 ## [0.1.1] - 2026-10-31
 
 ### New
