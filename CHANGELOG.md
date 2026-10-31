@@ -14,6 +14,8 @@
 
 ### Improved
 
+- The random-graph dialog starts with 15 nodes instead of 10.
+
 - `rand` is used without its default features, which removes the dependency on
   `getrandom`.
 

@@ -71,7 +71,7 @@ impl ChungLu {
 impl Default for ChungLu {
     fn default() -> Self {
         Self {
-            nodes: 10,
+            nodes: 15,
             avg_degree: 2.0,
             exponent: 2.5,
         }

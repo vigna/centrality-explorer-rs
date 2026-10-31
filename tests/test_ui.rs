@@ -228,7 +228,7 @@ fn test_generate_random() {
     h.run();
     let app = h.state();
     let g = app.session().graph();
-    assert_eq!(g.len(), 10);
+    assert_eq!(g.len(), 15);
     assert_eq!(g.seed(), Some(3));
     let size = app.canvas_rect().size();
     assert!(
