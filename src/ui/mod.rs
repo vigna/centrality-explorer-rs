@@ -82,6 +82,8 @@ enum Command {
     Undo,
     Redo,
     Random,
+    /// Loads the built-in example with this index.
+    Example(usize),
     Layout(Layout),
     Centrality(Centrality),
     Fullscreen,
@@ -113,7 +115,26 @@ const SHORTCUTS: [(KeyboardShortcut, Command); 20] = [
     (COMPONENTS, Command::Layout(layouts::components)),
 ];
 
+/// Starts the application on a canvas (web build).
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindgen::JsValue> {
+    eframe::WebRunner::new()
+        .start(
+            canvas,
+            eframe::WebOptions::default(),
+            Box::new(|cc| {
+                // The web build cannot open files, so it starts on an example.
+                let mut app = App::new(cc);
+                app.start_with_example(0);
+                Ok(Box::new(app))
+            }),
+        )
+        .await
+}
+
 /// Runs the application.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -151,6 +172,8 @@ pub struct App {
     canvas_rect: egui::Rect,
     /// The time of the current frame, in seconds.
     now: f64,
+    /// A built-in example to load once the canvas has its size.
+    start_example: Option<usize>,
 }
 
 impl App {
@@ -180,6 +203,7 @@ impl App {
             fixed_y: false,
             canvas_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, DEFAULT_CANVAS.into()),
             now: 0.0,
+            start_example: None,
         }
     }
 
@@ -207,6 +231,25 @@ impl App {
         graph.set_positions(&pos);
         self.animate_from_current();
         self.session.commit(graph);
+    }
+
+    /// Replaces the graph (undoably) with a built-in example, laid out for the
+    /// current canvas size, and animates it out of the canvas center.
+    pub fn load_example(&mut self, index: usize) {
+        let mut graph = crate::examples::EXAMPLES[index].graph();
+        let size = self.canvas_rect.size();
+        let pos = crate::layouts::force(&graph, [size.x, size.y]);
+        graph.set_positions(&pos);
+        self.animation = Some(Animation::new(Default::default(), self.now));
+        self.session.commit(graph);
+        self.prune();
+    }
+
+    /// Shows a built-in example when the application starts. It is loaded at
+    /// the end of the first frame, once the canvas has its real size, so the
+    /// layout fills it.
+    pub fn start_with_example(&mut self, index: usize) {
+        self.start_example = Some(index);
     }
 
     /// Starts an animation from the current node positions.
@@ -257,6 +300,7 @@ impl App {
             }
             Command::Quit => self.quit(ctx),
             Command::Random => self.open_random_dialog(),
+            Command::Example(index) => self.load_example(index),
         }
     }
 
@@ -356,6 +400,23 @@ impl App {
                     None,
                     Command::Layout(layouts::flip_vertically),
                 );
+            });
+            ui.menu_button("Examples", |ui| {
+                let mut group = None;
+                for (index, example) in crate::examples::EXAMPLES.iter().enumerate() {
+                    if group != Some(example.directed) {
+                        if group.is_some() {
+                            ui.separator();
+                        }
+                        ui.weak(if example.directed {
+                            "Directed"
+                        } else {
+                            "Undirected"
+                        });
+                        group = Some(example.directed);
+                    }
+                    item(ui, example.name, None, Command::Example(index));
+                }
             });
             ui.menu_button("Centrality", |ui| {
                 centrality = centrality_menu(ui, current, directed);
@@ -527,6 +588,10 @@ impl eframe::App for App {
                 egui::CentralPanel::default().show(ui, |ui| plot::plot(self, ui));
             });
         egui::CentralPanel::default().show(ui, |ui| canvas::canvas(self, ui));
+        if let Some(index) = self.start_example.take() {
+            self.load_example(index);
+            ctx.request_repaint();
+        }
         if !self.hover_seen {
             self.hovered = None;
         }

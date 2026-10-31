@@ -11,11 +11,13 @@ use std::path::Path;
 use egui::ViewportCommand;
 
 use super::{App, NAME};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::Session;
 use crate::graph::Graph;
 use crate::random::ChungLu;
 
 /// The file-dialog filter name for graph files.
+#[cfg(not(target_arch = "wasm32"))]
 const FILTER: &str = "Centrality Explorer graph";
 
 /// Returns the window title for a session file and its unsaved state.
@@ -65,6 +67,9 @@ pub(crate) struct Dialogs {
 
 /// Returns a short seed from the system clock.
 fn clock_seed() -> u64 {
+    #[cfg(target_arch = "wasm32")]
+    return (js_sys::Date::now() * 1000.0) as u64 % 1_000_000;
+    #[cfg(not(target_arch = "wasm32"))]
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_micros() as u64 % 1_000_000)
@@ -112,6 +117,12 @@ impl App {
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn open_file(&mut self) {
+        self.dialogs.error = Some("Opening files is not available in this demo.".into());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn open_file(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter(FILTER, &["json"])
@@ -150,6 +161,13 @@ impl App {
 
     /// Saves to a file chosen by the user; returns whether the session was
     /// saved.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn save_as(&mut self) -> bool {
+        self.dialogs.error = Some("Saving files is not available in this demo.".into());
+        false
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn save_as(&mut self) -> bool {
         let Some(path) = rfd::FileDialog::new()
             .add_filter(FILTER, &["json"])
