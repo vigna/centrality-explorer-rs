@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_RELEASE_OPT_LEVEL=s \
 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 CARGO_PROFILE_RELEASE_PANIC=abort \
-  cargo build --release --lib --target wasm32-unknown-unknown
+  cargo rustc --release --lib --crate-type cdylib --target wasm32-unknown-unknown
 mkdir -p dist/bindgen
 wasm-bindgen --target web --no-typescript --out-dir dist/bindgen \
   "$TARGET_DIR/wasm32-unknown-unknown/release/centrality_explorer.wasm"

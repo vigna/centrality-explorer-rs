@@ -10,6 +10,9 @@ import re
 import sys
 
 bindgen, wasm, out = sys.argv[1:4]
+# The glue is an ES module; turn it into plain script code with the exports
+# removed. This depends on the shape of the wasm-bindgen output, so re-check it
+# when upgrading wasm-bindgen (the assert below fails if an export is left).
 glue = open(f"{bindgen}/centrality_explorer.js").read()
 glue = re.sub(r"^export \{[^}]*\};?\s*$", "", glue, flags=re.M)
 glue = re.sub(r"^export (function|async function|class|const|let)", r"\1", glue, flags=re.M)
