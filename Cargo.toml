@@ -1,6 +1,6 @@
 [package]
 name = "centrality-explorer"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Visual explorer for centrality measures"
 authors = ["Sebastiano Vigna <sebastiano.vigna@unimi.it>"]
