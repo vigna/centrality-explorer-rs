@@ -334,16 +334,21 @@ impl App {
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         let mut command = None;
-        let mut item =
-            |ui: &mut egui::Ui, text: &str, shortcut: Option<&KeyboardShortcut>, c: Command| {
-                let mut button = egui::Button::new(text);
-                if let Some(shortcut) = shortcut {
-                    button = button.shortcut_text(ui.ctx().format_shortcut(shortcut));
-                }
-                if ui.add(button).clicked() {
-                    command = Some(c);
-                }
-            };
+        let mut item = |ui: &mut egui::Ui,
+                        text: &str,
+                        shortcut: Option<&KeyboardShortcut>,
+                        c: Command|
+         -> egui::Response {
+            let mut button = egui::Button::new(text);
+            if let Some(shortcut) = shortcut {
+                button = button.shortcut_text(ui.ctx().format_shortcut(shortcut));
+            }
+            let response = ui.add(button);
+            if response.clicked() {
+                command = Some(c);
+            }
+            response
+        };
         let current = self.session.centrality();
         let directed = self.session.graph().is_directed();
         let mut centrality = None;
@@ -415,7 +420,8 @@ impl App {
                         });
                         group = Some(example.directed);
                     }
-                    item(ui, example.name, None, Command::Example(index));
+                    item(ui, example.name, None, Command::Example(index))
+                        .on_hover_text(example.description);
                 }
             });
             ui.menu_button("Centrality", |ui| {

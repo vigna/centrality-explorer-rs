@@ -9,7 +9,8 @@
 
 - Examples menu with 21 built-in graphs (17 directed, 4 undirected), loaded
   undoably and laid out for the current canvas; the web build starts on the
-  first one.
+  first one. Hovering over an entry describes the dataset and what an arc
+  means.
 
 ### Improved
 

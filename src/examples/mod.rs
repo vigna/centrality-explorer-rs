@@ -11,6 +11,9 @@ pub struct Example {
     pub name: &'static str,
     /// Whether the graph is directed (the menu groups the examples by it).
     pub directed: bool,
+    /// What the graph is, and what an arc means; shown when hovering over the
+    /// menu entry.
+    pub description: &'static str,
     /// The graph, in the format of [`files`].
     json: &'static str,
 }
@@ -27,10 +30,11 @@ impl Example {
 
 /// Declares a built-in example from its file in `data/examples`.
 macro_rules! example {
-    ($name:expr, $directed:expr, $file:literal) => {
+    ($name:expr, $directed:expr, $file:literal, $description:expr) => {
         Example {
             name: $name,
             directed: $directed,
+            description: $description,
             json: include_str!(concat!("../../data/examples/", $file, ".json")),
         }
     };
@@ -39,27 +43,132 @@ macro_rules! example {
 /// The built-in examples, in menu order, directed ones first. The first one
 /// is shown when the web build starts.
 pub const EXAMPLES: &[Example] = &[
-    example!("Fauci Emails (32)", true, "fauci"),
-    example!("Gleich 2006 Example (11)", true, "gleich2006"),
-    example!("Small Example (7)", true, "small7"),
-    example!("Sampson's Monastery, Liking (18)", true, "sampson"),
-    example!("Florida Bay Food Web (128)", true, "foodweb"),
-    example!("McGrew Preschool, Toy Wins (19)", true, "mcgrew"),
-    example!("Hens' Peck Order (32)", true, "hens"),
-    example!("Krackhardt High-Tech, Advice (21)", true, "krackhardt"),
-    example!("Moreno Sociogram, Grade 2 (29)", true, "moreno2"),
-    example!("Galesburg Physicians (31)", true, "galesburg"),
-    example!("Madoff Feeder Funds (61)", true, "madoff"),
-    example!("World Cup 1998 Players (35)", true, "worldcup"),
-    example!("Bott 1928, Talking (11)", true, "bott_talking"),
-    example!("Bott 1928, Interference (11)", true, "bott_interference"),
-    example!("Bott 1928, Watching (11)", true, "bott_watching"),
-    example!("Bott 1928, Imitation (11)", true, "bott_imitation"),
-    example!("Bott 1928, Cooperation (11)", true, "bott_cooperation"),
-    example!("Karate Club (34)", false, "karate"),
-    example!("Dolphins (62)", false, "dolphins"),
-    example!("Political Books (105)", false, "polbooks"),
-    example!("College Football (115)", false, "football"),
+    example!(
+        "Fauci Emails (32)",
+        true,
+        "fauci",
+        "The replied-to network of the Fauci emails: an arc from a person to someone whose message they replied to (Benson, Veldt and Gleich, arXiv:2108.01239)."
+    ),
+    example!(
+        "Gleich 2006 Example (11)",
+        true,
+        "gleich2006",
+        "A small directed example with two components, from Gleich's 2006 work."
+    ),
+    example!(
+        "Small Example (7)",
+        true,
+        "small7",
+        "A small directed example with seven nodes."
+    ),
+    example!(
+        "Sampson's Monastery, Liking (18)",
+        true,
+        "sampson",
+        "Sampson's monastery: novices' liking for one another. Only positive ties are kept (the explorer has no signs)."
+    ),
+    example!(
+        "Florida Bay Food Web (128)",
+        true,
+        "foodweb",
+        "The Florida Bay food web in the dry season, unweighted."
+    ),
+    example!(
+        "McGrew Preschool, Toy Wins (19)",
+        true,
+        "mcgrew",
+        "McGrew's preschool (1972): toy competitions among children. An arc points to the winner, so PageRank ranks the dominant children highest."
+    ),
+    example!(
+        "Hens' Peck Order (32)",
+        true,
+        "hens",
+        "Guhl's White Leghorn hens (1946): the peck order. An arc points to the winner, so PageRank ranks the dominant hens highest."
+    ),
+    example!(
+        "Krackhardt High-Tech, Advice (21)",
+        true,
+        "krackhardt",
+        "Krackhardt's high-tech managers (1987), advice layer: an arc from a manager to one they go to for advice."
+    ),
+    example!(
+        "Moreno Sociogram, Grade 2 (29)",
+        true,
+        "moreno2",
+        "Moreno's sociogram of a second-grade class (Moreno and Jennings, 1934): an arc from a pupil to one they want to sit next to."
+    ),
+    example!(
+        "Galesburg Physicians (31)",
+        true,
+        "galesburg",
+        "The Galesburg physicians (Coleman, Katz and Menzel, 1966), discussion ties: an arc from a physician to one they discuss cases with."
+    ),
+    example!(
+        "Madoff Feeder Funds (61)",
+        true,
+        "madoff",
+        "Madoff's feeder funds (Krebs, 2009): arcs follow the money."
+    ),
+    example!(
+        "World Cup 1998 Players (35)",
+        true,
+        "worldcup",
+        "The 1998 World Cup player market (Krempel): an arc from a national team's country to a country where its players had club contracts."
+    ),
+    example!(
+        "Bott 1928, Talking (11)",
+        true,
+        "bott_talking",
+        "Eleven nursery-school children (Bott, Blatz, Chant and Bott, 1928), talking: an arc from a child to another they talked to at least twice."
+    ),
+    example!(
+        "Bott 1928, Interference (11)",
+        true,
+        "bott_interference",
+        "Eleven nursery-school children (Bott et al., 1928), interference: an arc from a child to another they interfered with at least twice."
+    ),
+    example!(
+        "Bott 1928, Watching (11)",
+        true,
+        "bott_watching",
+        "Eleven nursery-school children (Bott et al., 1928), watching: an arc from a child to another they watched at least twice."
+    ),
+    example!(
+        "Bott 1928, Imitation (11)",
+        true,
+        "bott_imitation",
+        "Eleven nursery-school children (Bott et al., 1928), imitation: an arc from a child to another they imitated at least once."
+    ),
+    example!(
+        "Bott 1928, Cooperation (11)",
+        true,
+        "bott_cooperation",
+        "Eleven nursery-school children (Bott et al., 1928), cooperation: an arc from a child to another they cooperated with at least once."
+    ),
+    example!(
+        "Karate Club (34)",
+        false,
+        "karate",
+        "Zachary's karate club: friendships among the members of a university club that later split in two."
+    ),
+    example!(
+        "Dolphins (62)",
+        false,
+        "dolphins",
+        "Associations among 62 bottlenose dolphins living off New Zealand (Lusseau et al.)."
+    ),
+    example!(
+        "Political Books (105)",
+        false,
+        "polbooks",
+        "Books about US politics sold by an online bookseller, linked when frequently bought together by the same customers (Krebs)."
+    ),
+    example!(
+        "College Football (115)",
+        false,
+        "football",
+        "US college football: games played between Division I teams in a season (Girvan and Newman)."
+    ),
 ];
 
 #[cfg(test)]
@@ -103,6 +212,11 @@ mod tests {
                 ("College Football (115)", 115, 1226, false),
             ]
         );
+    }
+
+    #[test]
+    fn every_example_has_a_description() {
+        assert!(EXAMPLES.iter().all(|e| !e.description.is_empty()));
     }
 
     #[test]
