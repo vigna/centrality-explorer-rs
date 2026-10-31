@@ -77,13 +77,13 @@ pub const EXAMPLES: &[Example] = &[
         "McGrew Preschool, Toy Wins (19)",
         true,
         "mcgrew",
-        "McGrew's preschool (1972): toy competitions among children. An arc points to the winner, so PageRank ranks the dominant children highest."
+        "McGrew's preschool (1972): toy competitions among children. An arc points to the winner, so centrality ranks the dominant children highest."
     ),
     example!(
         "Hens' Peck Order (32)",
         true,
         "hens",
-        "Guhl's White Leghorn hens (1946): the peck order. An arc points to the winner, so PageRank ranks the dominant hens highest."
+        "Guhl's White Leghorn hens (1946): the peck order. An arc points to the winner, so centrality ranks the dominant hens highest."
     ),
     example!(
         "Krackhardt High-Tech, Advice (21)",
