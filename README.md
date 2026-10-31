@@ -1,8 +1,9 @@
 # Centrality Explorer
 
-A visual tool to build intuition about centrality measures. You edit a small
-graph and watch, in real time, how the score of each node changes. There are
-eight centralities:
+A [visual tool](https://vigna.github.io/centrality-explorer-rs/) to build
+intuition about centrality measures. You edit a small graph and watch, in
+real time, how the score of each node changes. There are eight
+centralities:
 
 | Family | Centralities | x-axis of the plot |
 |---|---|---|
@@ -55,11 +56,11 @@ machine that runs it.
 
 ## Web Build and Built-In Examples
 
-You can try the app in your browser at
+Thanks to [David Gleich](https://dgleich.com/), who contributed the web
+build and the built-in examples made for his
+[Eigendeck](https://github.com/dgleich/eigendeck) presentation tool,
+you can try the app in your browser at
 <https://vigna.github.io/centrality-explorer-rs/>.
-Thanks to [David Gleich](https://github.com/dgleich), who contributed the web
-build and the built-in examples, made for his
-[Eigendeck](https://github.com/dgleich/eigendeck) presentation tool.
 
 The app also builds for the web (WebAssembly). `web/build.sh` writes
 `dist/centrality-explorer.html`, a single self-contained page that runs in any
